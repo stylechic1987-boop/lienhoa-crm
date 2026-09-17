@@ -5,6 +5,20 @@
 const params=new URLSearchParams(location.search);
 const isRecovery=location.hash.includes('type=recovery')||params.has('code');
 const isTuition=params.get('module')==='tuition';
-if(isRecovery){import('./src/recovery.tsx');}else if(isTuition){import('./src/tuition.tsx');}else{import('./src/crm.tsx');}
+if(isRecovery){import('./src/recovery.tsx');}
+else if(isTuition){import('./src/tuition.tsx');}
+else{
+  import('./src/crm.tsx');
+  const wireTuition=()=>{
+    const links=[...document.querySelectorAll('a')];
+    const link=links.find(a=>(a.textContent||'').includes('Thu học phí'));
+    if(link&&!link.dataset.tuitionWired){
+      link.dataset.tuitionWired='1';
+      link.addEventListener('click',e=>{e.preventDefault();window.location.href=window.location.pathname+'?module=tuition';});
+    }
+  };
+  new MutationObserver(wireTuition).observe(document.getElementById('root'),{childList:true,subtree:true});
+  wireTuition();
+}
 </script></body>
 </html>
