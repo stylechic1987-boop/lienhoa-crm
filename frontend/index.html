@@ -4,21 +4,20 @@
 <body><div id="root"></div><script type="module">
 const params=new URLSearchParams(location.search);
 const isRecovery=location.hash.includes('type=recovery')||params.has('code');
-const isTuition=params.get('module')==='tuition';
+const module=params.get('module');
 if(isRecovery){import('./src/recovery.tsx');}
-else if(isTuition){import('./src/tuition.tsx');}
+else if(module==='tuition'){import('./src/tuition.tsx');}
+else if(module==='finance'){import('./src/finance.tsx');}
 else{
   import('./src/crm.tsx');
-  const wireTuition=()=>{
+  const wire=()=>{
     const links=[...document.querySelectorAll('a')];
-    const link=links.find(a=>(a.textContent||'').includes('Thu học phí'));
-    if(link&&!link.dataset.tuitionWired){
-      link.dataset.tuitionWired='1';
-      link.addEventListener('click',e=>{e.preventDefault();window.location.href=window.location.pathname+'?module=tuition';});
-    }
+    const tuition=links.find(a=>(a.textContent||'').includes('Thu học phí'));
+    const finance=links.find(a=>(a.textContent||'').includes('KPI & Báo cáo'));
+    if(tuition&&!tuition.dataset.tuitionWired){tuition.dataset.tuitionWired='1';tuition.addEventListener('click',e=>{e.preventDefault();location.href=location.pathname+'?module=tuition';});}
+    if(finance&&!finance.dataset.financeWired){finance.dataset.financeWired='1';finance.addEventListener('click',e=>{e.preventDefault();location.href=location.pathname+'?module=finance';});}
   };
-  new MutationObserver(wireTuition).observe(document.getElementById('root'),{childList:true,subtree:true});
-  wireTuition();
+  new MutationObserver(wire).observe(document.getElementById('root'),{childList:true,subtree:true});wire();
 }
 </script></body>
 </html>
