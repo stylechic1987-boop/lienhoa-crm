@@ -4,6 +4,6 @@
 <body><div id="root"></div><script type="module">
 const params=new URLSearchParams(location.search);
 const isRecovery=location.hash.includes('type=recovery')||params.has('code');
-import(isRecovery?'./src/recovery.tsx':'./src/main.tsx');
+if(isRecovery){import('./src/recovery.tsx');}else{import('./src/main.tsx');}
 </script></body>
 </html>
