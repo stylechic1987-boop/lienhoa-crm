@@ -1,315 +1,72 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Users, UserRound, Bell, DollarSign, CheckCircle2, LogOut, Plus, Search, UserCog, RefreshCw, ShieldCheck, UserPlus, Power, X, KeyRound, Mail, Loader2 } from 'lucide-react';
+import { Users, UserRound, Bell, CheckCircle2, LogOut, Plus, Search, UserCog, RefreshCw, ShieldCheck, UserPlus, Power, X, KeyRound, Mail, Loader2, CalendarClock, Phone, MessageSquare, ClipboardList, BarChart3 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import './styles.css';
 
 type Role = 'director' | 'admin' | 'sale';
-type Lead = {
-  id: string; full_name: string; phone: string | null; course: string | null; source: string;
-  branch: string | null; status: string; assigned_to: string | null; notes: string | null;
-  next_follow_up: string | null; created_at: string; assignee?: { full_name: string } | null;
-};
-type Profile = {
-  id: string; full_name: string; email: string | null; role: Role;
-  branch: string | null; active: boolean; created_at?: string;
-};
+type Profile = { id:string; full_name:string; email:string|null; role:Role; branch:string|null; active:boolean; created_at?:string };
+type Lead = { id:string; full_name:string; phone:string|null; email?:string|null; course:string|null; source:string; branch:string|null; status:string; assigned_to:string|null; created_by?:string|null; notes:string|null; next_follow_up:string|null; created_at:string; assignee?:{full_name:string}|null };
+type FollowUp = { id:string; lead_id:string; assigned_to:string; due_at:string; status:'pending'|'done'|'cancelled'; note:string|null; created_at:string; lead?:{full_name:string;phone:string|null;course:string|null;branch:string|null}|null; assignee?:{full_name:string}|null };
+type Activity = { id:string; lead_id:string; actor_id:string; activity_type:string; content:string; created_at:string; actor?:{full_name:string}|null };
 
-const statusLabels: Record<string, string> = {
-  new: 'Mới', consulting: 'Đang tư vấn', interested: 'Đã quan tâm',
-  follow_up: 'Chờ follow-up', closed: 'Đã chốt', lost: 'Mất lead'
-};
-const roleLabels: Record<Role, string> = { director: 'Giám đốc', admin: 'Admin', sale: 'Sale' };
-const demoLeads: Lead[] = [
-  { id: 'demo-1', full_name: 'Nguyễn Thị Lan', phone: '09•••123', course: 'Tiếng Trung giao tiếp', source: 'Facebook', branch: 'Lạng Sơn', status: 'new', assigned_to: null, notes: null, next_follow_up: null, created_at: new Date().toISOString() },
-  { id: 'demo-2', full_name: 'Trần Văn Nam', phone: '09•••456', course: 'HSK 1–2', source: 'Facebook Ads', branch: 'Bắc Ninh', status: 'consulting', assigned_to: null, notes: null, next_follow_up: null, created_at: new Date().toISOString() },
-];
+const statusLabels:Record<string,string>={new:'Mới',consulting:'Đang tư vấn',interested:'Đã quan tâm',follow_up:'Chờ follow-up',closed:'Đã chốt',lost:'Mất lead'};
+const roleLabels:Record<Role,string>={director:'Giám đốc',admin:'Admin',sale:'Sale'};
+const activityLabels:Record<string,string>={note:'Ghi chú',call:'Gọi điện',message:'Tin nhắn',status_change:'Đổi trạng thái',assignment:'Phân Lead',follow_up:'Follow-up'};
 
-function clearStaleRecoveryHash() {
-  if (window.location.hash.includes('error=') || window.location.hash.includes('otp_expired')) {
-    window.history.replaceState(null, '', window.location.pathname + window.location.search);
-  }
+function clearStaleRecoveryHash(){if(window.location.hash.includes('error=')||window.location.hash.includes('otp_expired'))window.history.replaceState(null,'',window.location.pathname+window.location.search)}
+
+function App(){
+ const [session,setSession]=useState<any>(null); const [profile,setProfile]=useState<Profile|null>(null); const [leads,setLeads]=useState<Lead[]>([]); const [staff,setStaff]=useState<Profile[]>([]); const [followUps,setFollowUps]=useState<FollowUp[]>([]); const [activities,setActivities]=useState<Activity[]>([]);
+ const [page,setPage]=useState<'dashboard'|'leads'|'sales'|'followup'|'staff'>('dashboard'); const [query,setQuery]=useState(''); const [status,setStatus]=useState('all'); const [branch,setBranch]=useState('all'); const [showAdd,setShowAdd]=useState(false); const [showStaffModal,setShowStaffModal]=useState(false); const [resetStaff,setResetStaff]=useState<Profile|null>(null); const [selectedLead,setSelectedLead]=useState<Lead|null>(null); const [showFollowModal,setShowFollowModal]=useState(false); const [loading,setLoading]=useState(true); const [error,setError]=useState('');
+ useEffect(()=>{clearStaleRecoveryHash(); if(!supabase){setLoading(false);return;} supabase.auth.getSession().then(({data})=>setSession(data.session)); const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>setSession(s)); return()=>subscription.unsubscribe()},[]);
+ useEffect(()=>{if(session?.user)loadData()},[session]);
+ async function loadData(){if(!supabase||!session)return;setLoading(true);setError(''); const [p,l,s,f,a]=await Promise.all([
+   supabase.from('profiles').select('id,full_name,email,role,branch,active,created_at').eq('id',session.user.id).single(),
+   supabase.from('leads').select('*,assignee:profiles!leads_assigned_to_fkey(full_name)').order('created_at',{ascending:false}),
+   supabase.from('profiles').select('id,full_name,email,role,branch,active,created_at').order('full_name'),
+   supabase.from('follow_ups').select('*,lead:leads(full_name,phone,course,branch),assignee:profiles!follow_ups_assigned_to_fkey(full_name)').order('due_at'),
+   supabase.from('lead_activities').select('*,actor:profiles!lead_activities_actor_id_fkey(full_name)').order('created_at',{ascending:false})
+ ]); const pe=p.error,le=l.error,se=s.error,fe=f.error,ae=a.error; if(pe){setError(pe.message);await supabase.auth.signOut();return} if(!p.data?.active){setError('Tài khoản đã bị vô hiệu hóa.');await supabase.auth.signOut();return} if(le||se||fe||ae)setError((le||se||fe||ae)?.message||'Không tải được dữ liệu'); setProfile(p.data);setLeads(l.data||[]);setStaff(s.data||[]);setFollowUps(f.data||[]);setActivities(a.data||[]);setLoading(false)}
+ async function signOut(){await supabase?.auth.signOut();setProfile(null);setSession(null)}
+ const canManage=profile?.role==='director'||profile?.role==='admin';
+ const visible=useMemo(()=>leads.filter(l=>(status==='all'||l.status===status)&&(branch==='all'||l.branch===branch)&&[l.full_name,l.phone,l.email,l.course,l.source,l.branch].join(' ').toLowerCase().includes(query.toLowerCase())),[leads,status,branch,query]);
+ const pending=followUps.filter(x=>x.status==='pending'); const overdue=pending.filter(x=>new Date(x.due_at)<new Date());
+ async function addLead(e:React.FormEvent<HTMLFormElement>){e.preventDefault();if(!supabase||!session)return;const f=new FormData(e.currentTarget);const row={full_name:String(f.get('full_name')||''),phone:String(f.get('phone')||'')||null,email:String(f.get('email')||'')||null,course:String(f.get('course')||'')||null,source:String(f.get('source')||'manual'),branch:String(f.get('branch')||''),notes:String(f.get('notes')||'')||null,created_by:session.user.id};const {data,error}=await supabase.from('leads').insert(row).select('id').single();if(error){setError(error.message);return}if(data)await supabase.from('lead_activities').insert({lead_id:data.id,actor_id:session.user.id,activity_type:'note',content:'Tạo Lead mới'});setShowAdd(false);await loadData()}
+ async function assignLead(id:string,value:string){if(!supabase||!session)return;const {error}=await supabase.from('leads').update({assigned_to:value||null}).eq('id',id);if(error){setError(error.message);return}await supabase.from('lead_activities').insert({lead_id:id,actor_id:session.user.id,activity_type:'assignment',content:value?'Đã phân Lead cho Sale':'Đã bỏ phân Lead'});await loadData()}
+ async function updateStatus(id:string,value:string){if(!supabase||!session)return;const {error}=await supabase.from('leads').update({status:value}).eq('id',id);if(error){setError(error.message);return}await supabase.from('lead_activities').insert({lead_id:id,actor_id:session.user.id,activity_type:'status_change',content:`Chuyển trạng thái: ${statusLabels[value]||value}`});await loadData()}
+ async function addActivity(e:React.FormEvent<HTMLFormElement>){e.preventDefault();if(!supabase||!session||!selectedLead)return;const f=new FormData(e.currentTarget);const type=String(f.get('activity_type'));const content=String(f.get('content')||'');if(!content.trim())return;const {error}=await supabase.from('lead_activities').insert({lead_id:selectedLead.id,actor_id:session.user.id,activity_type:type,content});if(error){setError(error.message);return}await loadData()}
+ async function createFollowUp(e:React.FormEvent<HTMLFormElement>){e.preventDefault();if(!supabase||!session||!selectedLead)return;const f=new FormData(e.currentTarget);const assigned=canManage?String(f.get('assigned_to')||selectedLead.assigned_to||session.user.id):session.user.id;const due=String(f.get('due_at')||'');const note=String(f.get('note')||'');if(!assigned||!due){setError('Cần chọn Sale và thời gian follow-up.');return}const {error}=await supabase.from('follow_ups').insert({lead_id:selectedLead.id,assigned_to:assigned,due_at:new Date(due).toISOString(),status:'pending',note:note||null});if(error){setError(error.message);return}await supabase.from('leads').update({next_follow_up:new Date(due).toISOString(),status:selectedLead.status==='new'?'follow_up':selectedLead.status}).eq('id',selectedLead.id);await supabase.from('lead_activities').insert({lead_id:selectedLead.id,actor_id:session.user.id,activity_type:'follow_up',content:`Đặt follow-up ${new Date(due).toLocaleString('vi-VN')}`});setShowFollowModal(false);await loadData()}
+ async function completeFollowUp(id:string){if(!supabase||!session)return;const item=followUps.find(x=>x.id===id);const {error}=await supabase.from('follow_ups').update({status:'done'}).eq('id',id);if(error){setError(error.message);return}if(item)await supabase.from('lead_activities').insert({lead_id:item.lead_id,actor_id:session.user.id,activity_type:'follow_up',content:'Đã hoàn thành follow-up'});await loadData()}
+ async function createStaff(e:React.FormEvent<HTMLFormElement>){e.preventDefault();if(!supabase)return;const f=new FormData(e.currentTarget);const {data,error}=await supabase.functions.invoke('staff-admin',{body:{full_name:f.get('full_name'),email:f.get('email'),password:f.get('password'),role:f.get('role'),branch:f.get('branch'),active:true}});if(error||data?.error){setError(error?.message||data?.error||'Không tạo được tài khoản');return}setShowStaffModal(false);await loadData()}
+ async function toggleStaff(id:string,active:boolean){if(!supabase||id===session?.user?.id)return;const {error}=await supabase.from('profiles').update({active}).eq('id',id);if(error)setError(error.message);else await loadData()}
+ async function resetPassword(e:React.FormEvent<HTMLFormElement>){e.preventDefault();if(!supabase||!resetStaff)return;const f=new FormData(e.currentTarget);const p=String(f.get('password')||''),c=String(f.get('confirm')||'');if(p.length<8){setError('Mật khẩu tối thiểu 8 ký tự.');return}if(p!==c){setError('Mật khẩu xác nhận không khớp.');return}const {data,error}=await supabase.functions.invoke('staff-admin',{body:{action:'reset_password',user_id:resetStaff.id,password:p}});if(error||data?.error){setError(error?.message||data?.error||'Không đặt lại được mật khẩu');return}setResetStaff(null);setError('Đã đặt lại mật khẩu cho nhân viên.');}
+ if(!supabase)return <Login/>; if(!session)return <Login/>;
+ return <div className="app"><aside><div className="brand"><div className="logo">LH</div><div><b>LIÊN HOA</b><small>GLOBAL EDUCATION</small></div></div><nav>
+   <a className={page==='dashboard'?'active':''} onClick={()=>setPage('dashboard')}><BarChart3 size={14}/> Dashboard</a><a className={page==='leads'?'active':''} onClick={()=>setPage('leads')}><Users size={14}/> Khách hàng / Leads</a><a className={page==='sales'?'active':''} onClick={()=>setPage('sales')}><UserRound size={14}/> Sale & Phân bổ</a><a className={page==='followup'?'active':''} onClick={()=>setPage('followup')}><CalendarClock size={14}/> Follow-up {pending.length>0&&<span className="nav-badge">{pending.length}</span>}</a><a><ClipboardList size={14}/> Khóa học</a><a><ClipboardList size={14}/> Thu học phí</a><a><BarChart3 size={14}/> KPI & Báo cáo</a>{canManage&&<a className={page==='staff'?'active':''} onClick={()=>setPage('staff')}><UserCog size={14}/> Quản trị nhân sự</a>}
+ </nav><div className="side-foot"><div className="user"><UserCog size={14}/><span>{profile.full_name}</span></div><small>{roleLabels[profile.role].toUpperCase()} {profile.branch?`• ${profile.branch}`:'• TOÀN HỆ THỐNG'}</small><button onClick={signOut}><LogOut size={14}/> Đăng xuất</button></div></aside>
+ <main><header><div><h1>{page==='dashboard'?'Dashboard tổng quan':page==='leads'?'Khách hàng / Leads':page==='sales'?'Sale & Phân bổ':page==='followup'?'Follow-up tập trung':'Quản trị nhân sự'}</h1><p>{page==='dashboard'?'Điều hành Lead, Sale và chăm sóc khách hàng':page==='sales'?'Phân Lead theo cơ sở, tải Sale và trạng thái':page==='followup'?'Danh sách việc cần gọi và lịch chăm sóc':page==='staff'?'Tạo tài khoản, phân quyền và quản lý nhân viên':'Quản lý toàn bộ Lead theo quyền truy cập'}</p></div><div className="header-actions"><button className="icon-btn" onClick={loadData} disabled={loading}><RefreshCw size={17}/></button><button className="notify"><Bell size={18}/>{pending.length>0&&<span>{pending.length}</span>}</button></div></header>{error&&<div className="error">{error}<button onClick={()=>setError('')}><X size={13}/></button></div>}
+ {page==='dashboard'&&<Dashboard leads={leads} pending={pending} overdue={overdue} staff={staff} setPage={setPage} onOpenLead={setSelectedLead}/>} 
+ {page==='leads'&&<LeadsPage leads={visible} staff={staff} canManage={canManage} query={query} setQuery={setQuery} status={status} setStatus={setStatus} branch={branch} setBranch={setBranch} onAdd={()=>setShowAdd(true)} onAssign={assignLead} onStatus={updateStatus} onOpen={setSelectedLead}/>} 
+ {page==='sales'&&<SalesPage leads={leads} staff={staff} canManage={canManage} branch={branch} setBranch={setBranch} onAssign={assignLead} onOpen={setSelectedLead}/>} 
+ {page==='followup'&&<FollowUpPage items={followUps} pending={pending} onComplete={completeFollowUp} onOpenLead={id=>{const l=leads.find(x=>x.id===id);if(l)setSelectedLead(l)}} onNew={l=>{setSelectedLead(l);setShowFollowModal(true)}}/>}
+ {page==='staff'&&<StaffPage staff={staff} currentUserId={session.user.id} onAdd={()=>setShowStaffModal(true)} onToggle={toggleStaff} onReset={setResetStaff}/>} 
+ </main>
+ {showAdd&&<Modal title="Thêm Lead mới" onClose={()=>setShowAdd(false)}><form onSubmit={addLead}><input name="full_name" required placeholder="Họ và tên"/><input name="phone" placeholder="Số điện thoại"/><input name="email" type="email" placeholder="Email"/><input name="course" placeholder="Khóa học / nhu cầu"/><select name="source"><option>Facebook</option><option>Facebook Ads</option><option>Inbox</option><option>Website</option><option>Giới thiệu</option><option>manual</option></select><select name="branch"><option>Bắc Ninh</option><option>Lạng Sơn</option></select><textarea name="notes" placeholder="Ghi chú"></textarea><div className="modal-actions"><button type="button" onClick={()=>setShowAdd(false)}>Hủy</button><button className="primary">Lưu Lead</button></div></form></Modal>}
+ {showStaffModal&&<StaffModal onClose={()=>setShowStaffModal(false)} onSubmit={createStaff}/>} {resetStaff&&<PasswordModal staff={resetStaff} onClose={()=>setResetStaff(null)} onSubmit={resetPassword}/>} {selectedLead&&<LeadModal lead={selectedLead} activities={activities.filter(a=>a.lead_id===selectedLead.id)} staff={staff} canManage={canManage} onClose={()=>setSelectedLead(null)} onActivity={addActivity} onFollow={()=>setShowFollowModal(true)}/>} {showFollowModal&&selectedLead&&<FollowModal lead={selectedLead} staff={staff} canManage={canManage} onClose={()=>setShowFollowModal(false)} onSubmit={createFollowUp}/>}</div>
 }
 
-function App() {
-  const [session, setSession] = useState<any>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [staff, setStaff] = useState<Profile[]>([]);
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('all');
-  const [showAdd, setShowAdd] = useState(false);
-  const [showStaff, setShowStaff] = useState(false);
-  const [showStaffModal, setShowStaffModal] = useState(false);
-  const [resetStaff, setResetStaff] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    clearStaleRecoveryHash();
-    if (!supabase) { setLoading(false); return; }
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
-    return () => subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (session?.user) loadData();
-    else if (!supabase) { setLeads(demoLeads); setLoading(false); }
-  }, [session]);
-
-  async function loadData() {
-    if (!supabase || !session) return;
-    setLoading(true);
-    setError('');
-    const [{ data: p, error: pe }, { data: l, error: le }, { data: s, error: se }] = await Promise.all([
-      supabase.from('profiles').select('id,full_name,email,role,branch,active,created_at').eq('id', session.user.id).single(),
-      supabase.from('leads').select('*,assignee:profiles!leads_assigned_to_fkey(full_name)').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id,full_name,email,role,branch,active,created_at').order('full_name')
-    ]);
-    if (pe) { setError(pe.message); setProfile(null); await supabase.auth.signOut(); return; }
-    if (!p?.active) { setError('Tài khoản đã bị vô hiệu hóa. Vui lòng liên hệ Giám đốc.'); setProfile(null); await supabase.auth.signOut(); return; }
-    if (le) setError(le.message);
-    if (se) setError(se.message);
-    setProfile(p);
-    setLeads(l || []);
-    setStaff(s || []);
-    setLoading(false);
-  }
-
-  async function signOut() { await supabase?.auth.signOut(); setProfile(null); }
-
-  const visible = useMemo(() => leads.filter(l =>
-    (status === 'all' || l.status === status) &&
-    [l.full_name, l.phone, l.course, l.source, l.branch].join(' ').toLowerCase().includes(query.toLowerCase())
-  ), [leads, query, status]);
-
-  async function addLead(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!supabase || !session) return;
-    const f = new FormData(e.currentTarget);
-    const { error } = await supabase.from('leads').insert({
-      full_name: f.get('full_name'), phone: f.get('phone'), course: f.get('course'),
-      source: f.get('source') || 'manual', branch: f.get('branch'), notes: f.get('notes'), created_by: session.user.id
-    });
-    if (error) setError(error.message); else { setShowAdd(false); loadData(); }
-  }
-
-  async function assign(id: string, value: string) {
-    if (!supabase) return;
-    const { error } = await supabase.from('leads').update({ assigned_to: value || null }).eq('id', id);
-    if (error) setError(error.message); else loadData();
-  }
-
-  async function updateStatus(id: string, value: string) {
-    if (!supabase) return;
-    const { error } = await supabase.from('leads').update({ status: value }).eq('id', id);
-    if (error) setError(error.message); else loadData();
-  }
-
-  async function createStaff(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!supabase) return;
-    setError('');
-    const f = new FormData(e.currentTarget);
-    const payload = {
-      full_name: f.get('full_name'), email: f.get('email'), password: f.get('password'),
-      role: f.get('role'), branch: f.get('branch'), active: true
-    };
-    const { data, error } = await supabase.functions.invoke('staff-admin', { body: payload });
-    if (error) { setError(error.message); return; }
-    if (data?.error) { setError(data.error); return; }
-    setShowStaffModal(false);
-    await loadData();
-  }
-
-  async function toggleStaff(id: string, active: boolean) {
-    if (!supabase) return;
-    if (id === session?.user?.id) { setError('Không thể vô hiệu hóa chính tài khoản đang đăng nhập.'); return; }
-    const { error } = await supabase.from('profiles').update({ active }).eq('id', id);
-    if (error) setError(error.message); else loadData();
-  }
-
-  async function resetStaffPassword(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!supabase || !resetStaff) return;
-    setError('');
-    const f = new FormData(e.currentTarget);
-    const password = String(f.get('password') || '');
-    const confirm = String(f.get('confirm') || '');
-    if (password.length < 8) { setError('Mật khẩu mới tối thiểu 8 ký tự.'); return; }
-    if (password !== confirm) { setError('Mật khẩu xác nhận không khớp.'); return; }
-    const { data, error } = await supabase.functions.invoke('staff-admin', {
-      body: { action: 'reset_password', user_id: resetStaff.id, password }
-    });
-    if (error) { setError(error.message); return; }
-    if (data?.error) { setError(data.error); return; }
-    setResetStaff(null);
-    setError('Đã đặt lại mật khẩu cho tài khoản.');
-  }
-
-  if (!supabase) return <Login onDemo={() => setSession({ user: { id: 'demo' } })} demo />;
-  if (!session) return <Login />;
-
-  const canManage = profile?.role === 'director' || profile?.role === 'admin';
-
-  return <div className="app">
-    <aside>
-      <div className="brand"><div className="logo">LH</div><div><b>LIÊN HOA</b><small>GLOBAL EDUCATION</small></div></div>
-      <nav>
-        <a className={!showStaff ? 'active' : ''} onClick={() => setShowStaff(false)}>Inbox / Leads</a>
-        <a>Khách hàng</a><a>Sale & Phân bổ</a><a>Follow-up</a><a>Khóa học</a><a>Thu học phí</a><a>KPI & Báo cáo</a>
-        {canManage && <a className={showStaff ? 'active' : ''} onClick={() => setShowStaff(true)}><UserCog size={14}/> Quản trị nhân sự</a>}
-      </nav>
-      <div className="side-foot">
-        <div className="user"><UserCog size={14}/><span>{profile?.full_name || session.user.email}</span></div>
-        <small>{profile?.role ? roleLabels[profile.role].toUpperCase() : 'SALE'} {profile?.branch ? `• ${profile.branch}` : '• TOÀN HỆ THỐNG'}</small>
-        <button onClick={signOut}><LogOut size={14}/> Đăng xuất</button>
-      </div>
-    </aside>
-
-    <main>
-      <header>
-        <div><h1>{showStaff ? 'Quản trị nhân sự' : 'Inbox / Leads'}</h1><p>{showStaff ? 'Tạo tài khoản, phân quyền và quản lý nhân viên' : 'Lead Facebook, Inbox và Lead nhập tay'}</p></div>
-        <div className="header-actions"><button className="icon-btn" onClick={loadData} disabled={loading}><RefreshCw size={17}/></button><button className="notify"><Bell size={18}/><span>3</span></button></div>
-      </header>
-      {error && <div className="error">{error}<button onClick={() => setError('')}><X size={13}/></button></div>}
-
-      {showStaff ? <StaffPanel staff={staff} currentUserId={session.user.id} onAdd={() => setShowStaffModal(true)} onToggle={toggleStaff} onReset={setResetStaff} /> : <>
-        <section className="cards">
-          <Card icon={<Users/>} label="Tổng Lead" value={String(leads.length)} note="Theo quyền truy cập"/>
-          <Card icon={<UserRound/>} label="Đang chăm sóc" value={String(leads.filter(x => ['consulting','interested','follow_up'].includes(x.status)).length)} note="Cần follow-up"/>
-          <Card icon={<CheckCircle2/>} label="Đã chốt" value={String(leads.filter(x => x.status === 'closed').length)} note="Lead đã chốt"/>
-          <Card icon={<DollarSign/>} label="Quyền" value={profile?.role?.toUpperCase() || 'SALE'} note={profile?.branch || 'Toàn hệ thống'}/>
-        </section>
-        <section className="panel">
-          <div className="panel-head"><div><h2>Danh sách Lead</h2><p>{visible.length} Lead đang hiển thị</p></div><button className="primary" onClick={() => setShowAdd(true)}><Plus size={15}/> Thêm Lead</button></div>
-          <div className="filters"><div className="search"><Search size={15}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm tên, SĐT, khóa học..."/></div><select value={status} onChange={e => setStatus(e.target.value)}><option value="all">Tất cả trạng thái</option>{Object.entries(statusLabels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</select></div>
-          <div className="table-wrap"><table><thead><tr><th>Khách hàng</th><th>Nhu cầu</th><th>Nguồn / Cơ sở</th><th>Sale phụ trách</th><th>Trạng thái</th><th>Follow-up</th></tr></thead>
-            <tbody>{visible.map(l => <tr key={l.id}>
-              <td><b>{l.full_name}</b><small>{l.phone || 'Chưa có SĐT'}</small></td><td>{l.course || '—'}</td><td>{l.source}<small>{l.branch || '—'}</small></td>
-              <td>{canManage ? <select className="inline" value={l.assigned_to || ''} onChange={e => assign(l.id, e.target.value)}><option value="">Chưa phân</option>{staff.filter(x => x.role === 'sale' && x.active).map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}</select> : <span>{l.assignee?.full_name || 'Chưa phân'}</span>}</td>
-              <td><select className="inline" value={l.status} onChange={e => updateStatus(l.id, e.target.value)}>{Object.entries(statusLabels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</select></td>
-              <td>{l.next_follow_up ? new Date(l.next_follow_up).toLocaleString('vi-VN') : 'Chưa đặt'}</td>
-            </tr>)}</tbody>
-          </table></div>
-        </section>
-      </>}
-    </main>
-
-    {showAdd && <div className="modal-backdrop"><form className="modal" onSubmit={addLead}>
-      <h2>Thêm Lead mới</h2><input name="full_name" required placeholder="Họ và tên"/><input name="phone" placeholder="Số điện thoại"/><input name="course" placeholder="Khóa học / nhu cầu"/>
-      <select name="source"><option>Facebook</option><option>Facebook Ads</option><option>Inbox</option><option>Website</option><option>Giới thiệu</option><option>manual</option></select>
-      <select name="branch"><option>Bắc Ninh</option><option>Lạng Sơn</option></select><textarea name="notes" placeholder="Ghi chú"></textarea>
-      <div className="modal-actions"><button type="button" onClick={() => setShowAdd(false)}>Hủy</button><button className="primary">Lưu Lead</button></div>
-    </form></div>}
-    {showStaffModal && <StaffModal onClose={() => setShowStaffModal(false)} onSubmit={createStaff}/>} 
-    {resetStaff && <StaffPasswordModal staff={resetStaff} onClose={() => setResetStaff(null)} onSubmit={resetStaffPassword}/>} 
-  </div>;
-}
-
-function Login({ onDemo, demo = false }: { onDemo?: () => void; demo?: boolean }) {
-  const [email, setEmail] = useState('stylechic1987@gmail.com');
-  const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [showForgot, setShowForgot] = useState(false);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (demo) { onDemo?.(); return; }
-    if (!supabase) return;
-    setBusy(true); setError('');
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (error) setError(error.message);
-    setBusy(false);
-  }
-
-  return <div className="login">
-    <div className="login-card">
-      <div className="logo big">LH</div>
-      <h1>Liên Hoa CRM</h1><p>Quản trị Lead • Nhân sự • Chăm sóc khách hàng</p>
-      <form onSubmit={submit}>
-        <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" autoComplete="email"/>
-        <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="Mật khẩu" autoComplete="current-password"/>
-        <button className="primary full" disabled={busy}>{busy ? <><Loader2 size={14}/> Đang đăng nhập...</> : 'Đăng nhập'}</button>
-      </form>
-      {error && <div className="error">{error}</div>}
-      <button type="button" className="recovery-link" onClick={() => { clearStaleRecoveryHash(); setError(''); setShowForgot(true); }}><KeyRound size={14}/> Quên mật khẩu?</button>
-      {demo && <button type="button" className="recovery-link" onClick={onDemo}>Vào bản demo</button>}
-    </div>
-    {showForgot && <ForgotPasswordModal initialEmail={email} onClose={() => setShowForgot(false)} onEmailChange={setEmail}/>} 
-  </div>;
-}
-
-function ForgotPasswordModal({ initialEmail, onClose, onEmailChange }: { initialEmail: string; onClose: () => void; onEmailChange: (email: string) => void }) {
-  const [email, setEmail] = useState(initialEmail);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
-  const [sent, setSent] = useState(false);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!supabase) { setMessage('CRM chưa được cấu hình Supabase.'); return; }
-    const value = email.trim();
-    if (!value) { setMessage('Vui lòng nhập email tài khoản.'); return; }
-    setBusy(true); setMessage(''); setSent(false);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(value, {
-        redirectTo: `${window.location.origin}${window.location.pathname}`
-      });
-      if (error) throw error;
-      setSent(true);
-      setMessage('Đã gửi yêu cầu. Hãy kiểm tra hộp thư và mở email mới nhất để đặt mật khẩu.');
-    } catch (err: any) {
-      const raw = String(err?.message || err || '');
-      if (/failed to fetch|network|fetch/i.test(raw)) {
-        setMessage('Không kết nối được tới máy chủ Supabase. Hãy kiểm tra mạng hoặc thử lại sau ít phút.');
-      } else if (/rate limit|too many|email rate/i.test(raw)) {
-        setMessage('Supabase đang giới hạn số email khôi phục. Không gửi liên tiếp; hãy chờ rồi thử lại bằng yêu cầu mới.');
-      } else {
-        setMessage(raw || 'Không thể gửi email khôi phục.');
-      }
-    } finally { setBusy(false); }
-  }
-
-  return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div className="modal">
-      <div className="modal-head"><div><h2>Quên mật khẩu</h2><p>Gửi email đặt lại mật khẩu cho tài khoản Liên Hoa CRM.</p></div><button type="button" onClick={onClose}><X size={17}/></button></div>
-      <form onSubmit={submit}>
-        <label>Email tài khoản</label>
-        <div className="input-icon"><Mail size={15}/><input type="email" required value={email} onChange={e => { setEmail(e.target.value); onEmailChange(e.target.value); }} placeholder="stylechic1987@gmail.com" autoComplete="email"/></div>
-        {message && <div className={sent ? 'recovery-success' : 'error'}>{message}</div>}
-        <div className="modal-actions"><button type="button" onClick={onClose}>Đóng</button><button className="primary" disabled={busy}>{busy ? <><Loader2 size={14}/> Đang gửi...</> : 'Gửi email khôi phục'}</button></div>
-      </form>
-    </div>
-  </div>;
-}
-
-function StaffPanel({ staff, currentUserId, onAdd, onToggle, onReset }: { staff: Profile[]; currentUserId: string; onAdd: () => void; onToggle: (id: string, active: boolean) => void; onReset: (s: Profile) => void }) {
-  const active = staff.filter(s => s.active).length;
-  return <section className="panel">
-    <div className="panel-head"><div><h2>Danh sách nhân viên</h2><p>{staff.length} tài khoản • {active} đang hoạt động</p></div><button className="primary" onClick={onAdd}><UserPlus size={15}/> Thêm nhân viên</button></div>
-    <div className="staff-summary">
-      <div><ShieldCheck size={17}/><b>Phân quyền</b><span>Giám đốc / Admin / Sale</span></div>
-      <div><UserRound size={17}/><b>Cơ sở</b><span>Bắc Ninh / Lạng Sơn</span></div>
-    </div>
-    <div className="table-wrap"><table><thead><tr><th>Nhân viên</th><th>Vai trò</th><th>Cơ sở</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
-      {staff.map(s => <tr key={s.id}><td><b>{s.full_name}</b><small>{s.email || '—'}</small></td><td>{roleLabels[s.role]}</td><td>{s.branch || 'Toàn hệ thống'}</td><td><span className={s.active ? 'badge ok' : 'badge'}>{s.active ? 'Đang hoạt động' : 'Đã khóa'}</span></td><td><div className="row-actions"><button type="button" onClick={() => onReset(s)} disabled={s.id === currentUserId}><KeyRound size={14}/> Đặt lại mật khẩu</button>{s.id !== currentUserId && <button type="button" onClick={() => onToggle(s.id, !s.active)}><Power size={14}/> {s.active ? 'Khóa' : 'Mở khóa'}</button>}</div></td></tr>)}
-    </tbody></table></div>
-  </section>;
-}
-
-function StaffModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
-  return <div className="modal-backdrop"><form className="modal" onSubmit={onSubmit}><h2>Thêm nhân viên</h2><input name="full_name" required placeholder="Họ và tên"/><input name="email" type="email" required placeholder="Email đăng nhập"/><input name="password" type="password" minLength={8} required placeholder="Mật khẩu tối thiểu 8 ký tự"/><select name="role"><option value="sale">Sale</option><option value="admin">Admin</option></select><select name="branch"><option>Bắc Ninh</option><option>Lạng Sơn</option></select><div className="modal-actions"><button type="button" onClick={onClose}>Hủy</button><button className="primary">Tạo tài khoản</button></div></form></div>;
-}
-
-function StaffPasswordModal({ staff, onClose, onSubmit }: { staff: Profile; onClose: () => void; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
-  return <div className="modal-backdrop"><form className="modal" onSubmit={onSubmit}><div className="modal-head"><div><h2>Đặt lại mật khẩu</h2><p>{staff.full_name} • {staff.email || '—'}</p></div><button type="button" onClick={onClose}><X size={17}/></button></div><input name="password" type="password" minLength={8} required placeholder="Mật khẩu mới (ít nhất 8 ký tự)" autoComplete="new-password"/><input name="confirm" type="password" minLength={8} required placeholder="Nhập lại mật khẩu" autoComplete="new-password"/><div className="modal-actions"><button type="button" onClick={onClose}>Hủy</button><button className="primary">Lưu mật khẩu</button></div></form></div>;
-}
-
-function Card({ icon, label, value, note }: { icon: React.ReactNode; label: string; value: string; note: string }) {
-  return <div className="card"><div className="card-icon">{icon}</div><div><small>{label}</small><strong>{value}</strong><span>{note}</span></div></div>;
-}
+function Dashboard({leads,pending,overdue,staff,setPage,onOpenLead}:{leads:Lead[];pending:FollowUp[];overdue:FollowUp[];staff:Profile[];setPage:(p:any)=>void;onOpenLead:(l:Lead)=>void}){const sales=staff.filter(s=>s.role==='sale'&&s.active);return <><section className="cards"><Card icon={<Users/>} label="Tổng Lead" value={String(leads.length)} note="Theo quyền truy cập"/><Card icon={<UserRound/>} label="Đang chăm sóc" value={String(leads.filter(x=>['consulting','interested','follow_up'].includes(x.status)).length)} note="Đang mở"/><Card icon={<CheckCircle2/>} label="Đã chốt" value={String(leads.filter(x=>x.status==='closed').length)} note="Lead chốt"/><Card icon={<CalendarClock/>} label="Follow-up" value={String(pending.length)} note={overdue.length?`${overdue.length} quá hạn`:'Đúng lịch'}/></section><div className="dashboard-grid"><section className="panel"><div className="panel-head"><div><h2>Lead mới nhất</h2><p>Ưu tiên phân Sale và liên hệ</p></div><button className="primary" onClick={()=>setPage('leads')}>Xem tất cả</button></div><div className="table-wrap"><table><thead><tr><th>Khách hàng</th><th>Cơ sở</th><th>Trạng thái</th><th>Sale</th></tr></thead><tbody>{leads.slice(0,8).map(l=><tr key={l.id} onClick={()=>onOpenLead(l)} className="clickable"><td><b>{l.full_name}</b><small>{l.phone||'Chưa có SĐT'}</small></td><td>{l.branch||'—'}</td><td>{statusLabels[l.status]||l.status}</td><td>{l.assignee?.full_name||'Chưa phân'}</td></tr>)}</tbody></table></div></section><section className="panel"><div className="panel-head"><div><h2>Việc cần xử lý</h2><p>{sales.length} Sale đang hoạt động</p></div><button onClick={()=>setPage('followup')}>Mở Follow-up</button></div>{pending.slice(0,7).map(f=><div className="task" key={f.id}><CalendarClock size={17}/><div><b>{f.lead?.full_name||'Lead'}</b><small>{new Date(f.due_at).toLocaleString('vi-VN')} • {f.assignee?.full_name||'Sale'}</small></div></div>)}</section></div></>}
+function LeadsPage(p:any){return <section className="panel"><div className="panel-head"><div><h2>Danh sách Lead</h2><p>{p.leads.length} Lead đang hiển thị</p></div><button className="primary" onClick={p.onAdd}><Plus size={15}/> Thêm Lead</button></div><div className="filters"><div className="search"><Search size={15}/><input value={p.query} onChange={e=>p.setQuery(e.target.value)} placeholder="Tìm tên, SĐT, khóa học..."/></div><select value={p.status} onChange={e=>p.setStatus(e.target.value)}><option value="all">Tất cả trạng thái</option>{Object.entries(statusLabels).map(([k,v])=><option key={k} value={k}>{v as string}</option>)}</select><select value={p.branch} onChange={e=>p.setBranch(e.target.value)}><option value="all">Tất cả cơ sở</option><option>Bắc Ninh</option><option>Lạng Sơn</option></select></div><div className="table-wrap"><table><thead><tr><th>Khách hàng</th><th>Nhu cầu</th><th>Nguồn / Cơ sở</th><th>Sale phụ trách</th><th>Trạng thái</th><th>Follow-up</th></tr></thead><tbody>{p.leads.map((l:Lead)=><tr key={l.id} onClick={()=>p.onOpen(l)} className="clickable"><td><b>{l.full_name}</b><small>{l.phone||l.email||'Chưa có liên hệ'}</small></td><td>{l.course||'—'}</td><td>{l.source}<small>{l.branch||'—'}</small></td><td onClick={e=>e.stopPropagation()}>{p.canManage?<select className="inline" value={l.assigned_to||''} onChange={e=>p.onAssign(l.id,e.target.value)}><option value="">Chưa phân</option>{p.staff.filter((s:Profile)=>s.role==='sale'&&s.active&&(s.branch===l.branch||!l.branch)).map((s:Profile)=><option key={s.id} value={s.id}>{s.full_name}</option>)}</select>:<span>{l.assignee?.full_name||'Chưa phân'}</span>}</td><td onClick={e=>e.stopPropagation()}><select className="inline" value={l.status} onChange={e=>p.onStatus(l.id,e.target.value)}>{Object.entries(statusLabels).map(([k,v])=><option key={k} value={k}>{v as string}</option>)}</select></td><td>{l.next_follow_up?new Date(l.next_follow_up).toLocaleString('vi-VN'):'Chưa đặt'}</td></tr>)}</tbody></table></div></section>}
+function SalesPage({leads,staff,canManage,branch,setBranch,onAssign,onOpen}:any){const sales=staff.filter((s:Profile)=>s.role==='sale'&&s.active&&(branch==='all'||s.branch===branch));return <><div className="filters"><select value={branch} onChange={e=>setBranch(e.target.value)}><option value="all">Tất cả cơ sở</option><option>Bắc Ninh</option><option>Lạng Sơn</option></select></div><section className="sales-grid">{sales.map((s:Profile)=>{const mine=leads.filter((l:Lead)=>l.assigned_to===s.id);return <div className="sales-card" key={s.id}><div className="sales-head"><div className="avatar">{s.full_name.slice(0,1)}</div><div><b>{s.full_name}</b><small>{s.branch||'Toàn hệ thống'}</small></div></div><div className="sales-stats"><span><b>{mine.length}</b> Lead</span><span><b>{mine.filter(l=>['consulting','interested','follow_up'].includes(l.status)).length}</b> Đang chăm</span><span><b>{mine.filter(l=>l.status==='closed').length}</b> Chốt</span></div>{canManage&&<select value="" onChange={e=>e.target.value&&onAssign(e.target.value,s.id)}><option value="">Phân Lead cho {s.full_name}</option>{leads.filter((l:Lead)=>!l.assigned_to&&(branch==='all'||l.branch===s.branch)).slice(0,30).map((l:Lead)=><option key={l.id} value={l.id}>{l.full_name} • {l.course||'Chưa rõ'}</option>)}</select>}<div className="mini-list">{mine.slice(0,5).map(l=><button key={l.id} onClick={()=>onOpen(l)}><span>{l.full_name}</span><small>{statusLabels[l.status]}</small></button>)}</div></div>})}</section></>}
+function FollowUpPage({items,pending,onComplete,onOpenLead,onNew}:any){return <section className="panel"><div className="panel-head"><div><h2>Lịch Follow-up</h2><p>{pending.length} việc đang chờ • {items.filter((x:FollowUp)=>x.status==='done').length} đã hoàn thành</p></div></div><div className="table-wrap"><table><thead><tr><th>Thời gian</th><th>Khách hàng</th><th>Sale</th><th>Nội dung</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{items.map((f:FollowUp)=><tr key={f.id} className={f.status==='pending'&&new Date(f.due_at)<new Date()?'overdue':''}><td>{new Date(f.due_at).toLocaleString('vi-VN')}</td><td><b>{f.lead?.full_name||'—'}</b><small>{f.lead?.phone||''}</small></td><td>{f.assignee?.full_name||'—'}</td><td>{f.note||'Gọi lại tư vấn'}</td><td>{f.status==='pending'?'Đang chờ':f.status==='done'?'Đã xong':'Đã hủy'}</td><td>{f.status==='pending'&&<button onClick={()=>onComplete(f.id)}>Hoàn thành</button>}<button onClick={()=>onOpenLead(f.lead_id)}>Mở Lead</button></td></tr>)}</tbody></table></div></section>}
+function StaffPage({staff,currentUserId,onAdd,onToggle,onReset}:any){return <section className="panel"><div className="panel-head"><div><h2>Danh sách nhân viên</h2><p>{staff.length} tài khoản • {staff.filter((x:Profile)=>x.active).length} đang hoạt động</p></div><button className="primary" onClick={onAdd}><UserPlus size={15}/> Thêm nhân viên</button></div><div className="table-wrap"><table><thead><tr><th>Nhân viên</th><th>Vai trò</th><th>Cơ sở</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{staff.map((s:Profile)=><tr key={s.id}><td><b>{s.full_name}</b><small>{s.email||'—'}</small></td><td>{roleLabels[s.role]}</td><td>{s.branch||'Toàn hệ thống'}</td><td>{s.active?'Đang hoạt động':'Đã khóa'}</td><td><button disabled={s.id===currentUserId} onClick={()=>onToggle(s.id,!s.active)}><Power size={14}/>{s.active?'Khóa':'Mở'}</button>{s.id!==currentUserId&&<button onClick={()=>onReset(s)}><KeyRound size={14}/> Đặt lại mật khẩu</button>}</td></tr>)}</tbody></table></div></section>}
+function LeadModal({lead,activities,staff,canManage,onClose,onActivity,onFollow}:any){return <Modal title={lead.full_name} onClose={onClose}><div className="lead-summary"><div><Phone size={15}/> {lead.phone||'Chưa có SĐT'}</div><div>{lead.course||'Chưa xác định nhu cầu'}</div><div>{lead.branch||'—'} • {statusLabels[lead.status]}</div></div><div className="modal-actions"><button onClick={onFollow}><CalendarClock size={14}/> Đặt Follow-up</button>{lead.phone&&<a className="button-like" href={`tel:${lead.phone}`}><Phone size={14}/> Gọi</a>}</div><form onSubmit={onActivity}><select name="activity_type"><option value="note">Ghi chú</option><option value="call">Gọi điện</option><option value="message">Tin nhắn</option></select><textarea name="content" required placeholder="Nội dung chăm sóc / kết quả cuộc gọi"></textarea><button className="primary"><MessageSquare size={14}/> Lưu nhật ký</button></form><h3>Lịch sử chăm sóc</h3><div className="timeline">{activities.length?activities.map((a:Activity)=><div className="timeline-item" key={a.id}><b>{activityLabels[a.activity_type]||a.activity_type}</b><span>{a.content}</span><small>{a.actor?.full_name||'Nhân viên'} • {new Date(a.created_at).toLocaleString('vi-VN')}</small></div>):<p>Chưa có nhật ký.</p>}</div></Modal>}
+function FollowModal({lead,staff,canManage,onClose,onSubmit}:any){return <Modal title={`Đặt Follow-up • ${lead.full_name}`} onClose={onClose}><form onSubmit={onSubmit}>{canManage?<select name="assigned_to" defaultValue={lead.assigned_to||''} required><option value="">Chọn Sale</option>{staff.filter((s:Profile)=>s.role==='sale'&&s.active&&(s.branch===lead.branch||!lead.branch)).map((s:Profile)=><option key={s.id} value={s.id}>{s.full_name} • {s.branch||''}</option>)}</select>:<p className="demo-note">Follow-up sẽ được giao cho tài khoản của anh.</p>}<label>Thời gian</label><input name="due_at" type="datetime-local" required/><textarea name="note" placeholder="Nội dung cần xử lý, ví dụ: gọi lại báo học phí..."></textarea><div className="modal-actions"><button type="button" onClick={onClose}>Hủy</button><button className="primary"><CalendarClock size={14}/> Tạo Follow-up</button></div></form></Modal>}
+function StaffModal({onClose,onSubmit}:any){return <Modal title="Thêm nhân viên" onClose={onClose}><form onSubmit={onSubmit}><input name="full_name" required placeholder="Họ và tên"/><input name="email" type="email" required placeholder="Email đăng nhập"/><input name="password" type="password" minLength={8} required placeholder="Mật khẩu tối thiểu 8 ký tự"/><select name="role"><option value="sale">Sale</option><option value="admin">Admin</option></select><select name="branch"><option>Bắc Ninh</option><option>Lạng Sơn</option></select><div className="modal-actions"><button type="button" onClick={onClose}>Hủy</button><button className="primary"><UserPlus size={14}/> Tạo tài khoản</button></div></form></Modal>}
+function PasswordModal({staff,onClose,onSubmit}:any){return <Modal title={`Đặt lại mật khẩu • ${staff.full_name}`} onClose={onClose}><form onSubmit={onSubmit}><input name="password" type="password" minLength={8} required placeholder="Mật khẩu mới"/><input name="confirm" type="password" minLength={8} required placeholder="Nhập lại mật khẩu"/><div className="modal-actions"><button type="button" onClick={onClose}>Hủy</button><button className="primary"><KeyRound size={14}/> Cập nhật mật khẩu</button></div></form></Modal>}
+function Modal({title,onClose,children}:{title:string;onClose:()=>void;children:React.ReactNode}){return <div className="modal-backdrop"><div className="modal"><div className="modal-title"><h2>{title}</h2><button onClick={onClose}><X size={17}/></button></div>{children}</div></div>}
+function Card({icon,label,value,note}:{icon:React.ReactNode;label:string;value:string;note:string}){return <div className="card"><div className="card-icon">{icon}</div><div><small>{label}</small><strong>{value}</strong><span>{note}</span></div></div>}
+function Login(){const [email,setEmail]=useState('stylechic1987@gmail.com');const [password,setPassword]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [forgot,setForgot]=useState(false);const [sent,setSent]=useState(false);async function submit(e:React.FormEvent){e.preventDefault();if(!supabase)return;setBusy(true);setError('');const {error}=await supabase.auth.signInWithPassword({email,password});if(error)setError(error.message);setBusy(false)}async function recover(){if(!supabase)return;setBusy(true);setError('');setSent(false);const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});if(error)setError(error.message);else setSent(true);setBusy(false)}return <div className="login"><div className="login-card"><div className="logo big">LH</div><h1>Liên Hoa CRM</h1><p>Quản trị Lead • Nhân sự • Chăm sóc khách hàng</p>{!forgot?<form onSubmit={submit}><input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="Email" autoComplete="username"/><input value={password} onChange={e=>setPassword(e.target.value)} type="password" required placeholder="Mật khẩu" autoComplete="current-password"/><button className="primary full" disabled={busy}>{busy?<><Loader2 size={14}/> Đang đăng nhập...</>: 'Đăng nhập'}</button>{error&&<div className="error">{error}</div>}<button type="button" className="recovery-link" onClick={()=>{clearStaleRecoveryHash();setForgot(true)}}><KeyRound size={14}/> Quên mật khẩu?</button></form>:<div><h3>Quên mật khẩu</h3><p>Nhập email để nhận liên kết đặt lại mật khẩu.</p><input value={email} onChange={e=>setEmail(e.target.value)} type="email" required placeholder="Email tài khoản"/>{error&&<div className="error">{error}</div>}{sent&&<div className="recovery-success">Đã gửi yêu cầu. Kiểm tra hộp thư và cả Spam.</div>}<button className="primary full" onClick={recover} disabled={busy}>{busy?<><Loader2 size={14}/> Đang gửi...</>:<><Mail size={14}/> Gửi email khôi phục</>}</button><button type="button" className="recovery-link" onClick={()=>setForgot(false)}>← Quay lại đăng nhập</button></div>}</div></div>}
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
