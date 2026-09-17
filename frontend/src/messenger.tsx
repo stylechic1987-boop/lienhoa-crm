@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { supabase } from './lib/supabase';
 import './styles.css';
 import './crm.css';
-import { Bell, Check, ChevronLeft, Clock3, LogOut, MessageCircle, RefreshCw, Send, UserRound, Users, Phone, CalendarClock, StickyNote, X } from 'lucide-react';
+import './messenger.css';
+import { Bell, Check, LogOut, MessageCircle, RefreshCw, Send, UserRound, Phone, CalendarClock, StickyNote, X } from 'lucide-react';
 
 type Role='director'|'admin'|'sale';
 type Profile={id:string;full_name:string;email:string|null;role:Role;branch:string|null;active:boolean};
