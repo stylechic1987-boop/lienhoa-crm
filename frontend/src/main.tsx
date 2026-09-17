@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Users, UserRound, Bell, DollarSign, CheckCircle2, LogOut, Plus, Search, UserCog, RefreshCw, ShieldCheck, UserPlus, Power, X, KeyRound } from 'lucide-react';
+import { Users, UserRound, Bell, DollarSign, CheckCircle2, LogOut, Plus, Search, UserCog, RefreshCw, ShieldCheck, UserPlus, Power, X, KeyRound, Mail, Loader2 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import './styles.css';
 
@@ -25,6 +25,12 @@ const demoLeads: Lead[] = [
   { id: 'demo-2', full_name: 'Trần Văn Nam', phone: '09•••456', course: 'HSK 1–2', source: 'Facebook Ads', branch: 'Bắc Ninh', status: 'consulting', assigned_to: null, notes: null, next_follow_up: null, created_at: new Date().toISOString() },
 ];
 
+function clearStaleRecoveryHash() {
+  if (window.location.hash.includes('error=') || window.location.hash.includes('otp_expired')) {
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
+}
+
 function App() {
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -40,6 +46,7 @@ function App() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    clearStaleRecoveryHash();
     if (!supabase) { setLoading(false); return; }
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
@@ -48,7 +55,7 @@ function App() {
 
   useEffect(() => {
     if (session?.user) loadData();
-    else if (!supabase) setLeads(demoLeads);
+    else if (!supabase) { setLeads(demoLeads); setLoading(false); }
   }, [session]);
 
   async function loadData() {
@@ -201,6 +208,84 @@ function App() {
   </div>;
 }
 
+function Login({ onDemo, demo = false }: { onDemo?: () => void; demo?: boolean }) {
+  const [email, setEmail] = useState('stylechic1987@gmail.com');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [showForgot, setShowForgot] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (demo) { onDemo?.(); return; }
+    if (!supabase) return;
+    setBusy(true); setError('');
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) setError(error.message);
+    setBusy(false);
+  }
+
+  return <div className="login">
+    <div className="login-card">
+      <div className="logo big">LH</div>
+      <h1>Liên Hoa CRM</h1><p>Quản trị Lead • Nhân sự • Chăm sóc khách hàng</p>
+      <form onSubmit={submit}>
+        <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" autoComplete="email"/>
+        <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="Mật khẩu" autoComplete="current-password"/>
+        <button className="primary full" disabled={busy}>{busy ? <><Loader2 size={14}/> Đang đăng nhập...</> : 'Đăng nhập'}</button>
+      </form>
+      {error && <div className="error">{error}</div>}
+      <button type="button" className="recovery-link" onClick={() => { clearStaleRecoveryHash(); setError(''); setShowForgot(true); }}><KeyRound size={14}/> Quên mật khẩu?</button>
+      {demo && <button type="button" className="recovery-link" onClick={onDemo}>Vào bản demo</button>}
+    </div>
+    {showForgot && <ForgotPasswordModal initialEmail={email} onClose={() => setShowForgot(false)} onEmailChange={setEmail}/>} 
+  </div>;
+}
+
+function ForgotPasswordModal({ initialEmail, onClose, onEmailChange }: { initialEmail: string; onClose: () => void; onEmailChange: (email: string) => void }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [sent, setSent] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!supabase) { setMessage('CRM chưa được cấu hình Supabase.'); return; }
+    const value = email.trim();
+    if (!value) { setMessage('Vui lòng nhập email tài khoản.'); return; }
+    setBusy(true); setMessage(''); setSent(false);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(value, {
+        redirectTo: `${window.location.origin}${window.location.pathname}`
+      });
+      if (error) throw error;
+      setSent(true);
+      setMessage('Đã gửi yêu cầu. Hãy kiểm tra hộp thư và mở email mới nhất để đặt mật khẩu.');
+    } catch (err: any) {
+      const raw = String(err?.message || err || '');
+      if (/failed to fetch|network|fetch/i.test(raw)) {
+        setMessage('Không kết nối được tới máy chủ Supabase. Hãy kiểm tra mạng hoặc thử lại sau ít phút.');
+      } else if (/rate limit|too many|email rate/i.test(raw)) {
+        setMessage('Supabase đang giới hạn số email khôi phục. Không gửi liên tiếp; hãy chờ rồi thử lại bằng yêu cầu mới.');
+      } else {
+        setMessage(raw || 'Không thể gửi email khôi phục.');
+      }
+    } finally { setBusy(false); }
+  }
+
+  return <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="modal">
+      <div className="modal-head"><div><h2>Quên mật khẩu</h2><p>Gửi email đặt lại mật khẩu cho tài khoản Liên Hoa CRM.</p></div><button type="button" onClick={onClose}><X size={17}/></button></div>
+      <form onSubmit={submit}>
+        <label>Email tài khoản</label>
+        <div className="input-icon"><Mail size={15}/><input type="email" required value={email} onChange={e => { setEmail(e.target.value); onEmailChange(e.target.value); }} placeholder="stylechic1987@gmail.com" autoComplete="email"/></div>
+        {message && <div className={sent ? 'recovery-success' : 'error'}>{message}</div>}
+        <div className="modal-actions"><button type="button" onClick={onClose}>Đóng</button><button className="primary" disabled={busy}>{busy ? <><Loader2 size={14}/> Đang gửi...</> : 'Gửi email khôi phục'}</button></div>
+      </form>
+    </div>
+  </div>;
+}
+
 function StaffPanel({ staff, currentUserId, onAdd, onToggle, onReset }: { staff: Profile[]; currentUserId: string; onAdd: () => void; onToggle: (id: string, active: boolean) => void; onReset: (s: Profile) => void }) {
   const active = staff.filter(s => s.active).length;
   return <section className="panel">
@@ -208,77 +293,23 @@ function StaffPanel({ staff, currentUserId, onAdd, onToggle, onReset }: { staff:
     <div className="staff-summary">
       <div><ShieldCheck size={17}/><b>Phân quyền</b><span>Giám đốc / Admin / Sale</span></div>
       <div><UserRound size={17}/><b>Cơ sở</b><span>Bắc Ninh / Lạng Sơn</span></div>
-      <div><KeyRound size={17}/><b>Mật khẩu</b><span>Đặt lại trực tiếp</span></div>
     </div>
-    <div className="table-wrap"><table><thead><tr><th>Nhân viên</th><th>Email đăng nhập</th><th>Vai trò</th><th>Cơ sở</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-      <tbody>{staff.map(s => <tr key={s.id}>
-        <td><b>{s.full_name || 'Chưa đặt tên'}</b></td><td>{s.email || '—'}</td><td><span className="role-pill">{roleLabels[s.role]}</span></td><td>{s.branch || 'Toàn hệ thống'}</td>
-        <td><span className={s.active ? 'status-on' : 'status-off'}>{s.active ? 'Đang hoạt động' : 'Đã vô hiệu hóa'}</span></td>
-        <td>
-          <button className="restore-btn" disabled={s.id === currentUserId} onClick={() => onReset(s)}><KeyRound size={13}/> Đặt lại mật khẩu</button>
-          {' '}
-          <button className={s.active ? 'danger-btn' : 'restore-btn'} disabled={s.id === currentUserId} onClick={() => onToggle(s.id, !s.active)}>{s.active ? <><Power size={13}/> Vô hiệu hóa</> : <><CheckCircle2 size={13}/> Kích hoạt</>}</button>
-        </td>
-      </tr>)}</tbody>
-    </table></div>
+    <div className="table-wrap"><table><thead><tr><th>Nhân viên</th><th>Vai trò</th><th>Cơ sở</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
+      {staff.map(s => <tr key={s.id}><td><b>{s.full_name}</b><small>{s.email || '—'}</small></td><td>{roleLabels[s.role]}</td><td>{s.branch || 'Toàn hệ thống'}</td><td><span className={s.active ? 'badge ok' : 'badge'}>{s.active ? 'Đang hoạt động' : 'Đã khóa'}</span></td><td><div className="row-actions"><button type="button" onClick={() => onReset(s)} disabled={s.id === currentUserId}><KeyRound size={14}/> Đặt lại mật khẩu</button>{s.id !== currentUserId && <button type="button" onClick={() => onToggle(s.id, !s.active)}><Power size={14}/> {s.active ? 'Khóa' : 'Mở khóa'}</button>}</div></td></tr>)}
+    </tbody></table></div>
   </section>;
 }
 
-function StaffPasswordModal({ staff, onClose, onSubmit }: { staff: Profile; onClose: () => void; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
-  return <div className="modal-backdrop"><form className="modal" onSubmit={onSubmit}>
-    <div className="modal-title"><div><h2>Đặt lại mật khẩu</h2><p>{staff.full_name} • {staff.email}</p></div><button type="button" className="close-btn" onClick={onClose}><X size={17}/></button></div>
-    <label>Mật khẩu mới<input name="password" type="password" minLength={8} required autoFocus placeholder="Tối thiểu 8 ký tự"/></label>
-    <label>Nhập lại mật khẩu<input name="confirm" type="password" minLength={8} required placeholder="Nhập lại mật khẩu mới"/></label>
-    <div className="demo-note">Không cần biết mật khẩu cũ. Mật khẩu được đổi trực tiếp trên hệ thống bảo mật.</div>
-    <div className="modal-actions"><button type="button" onClick={onClose}>Hủy</button><button className="primary"><KeyRound size={14}/> Đổi mật khẩu</button></div>
-  </form></div>;
-}
-
 function StaffModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
-  return <div className="modal-backdrop"><form className="modal" onSubmit={onSubmit}>
-    <div className="modal-title"><div><h2>Thêm nhân viên</h2><p>Tạo tài khoản đăng nhập CRM và cấp quyền ngay</p></div><button type="button" className="close-btn" onClick={onClose}><X size={17}/></button></div>
-    <label>Họ và tên<input name="full_name" required placeholder="Nguyễn Văn A"/></label>
-    <label>Email đăng nhập<input name="email" type="email" required placeholder="nhanvien@lienhoa.edu.vn"/></label>
-    <label>Mật khẩu ban đầu<input name="password" type="password" minLength={8} required placeholder="Tối thiểu 8 ký tự"/></label>
-    <div className="form-grid"><label>Vai trò<select name="role" defaultValue="sale"><option value="sale">Sale</option><option value="admin">Admin</option><option value="director">Giám đốc</option></select></label><label>Cơ sở<select name="branch" defaultValue="Lạng Sơn"><option>Bắc Ninh</option><option>Lạng Sơn</option></select></label></div>
-    <div className="modal-actions"><button type="button" onClick={onClose}>Hủy</button><button className="primary"><UserPlus size={14}/> Tạo tài khoản</button></div>
-  </form></div>;
+  return <div className="modal-backdrop"><form className="modal" onSubmit={onSubmit}><h2>Thêm nhân viên</h2><input name="full_name" required placeholder="Họ và tên"/><input name="email" type="email" required placeholder="Email đăng nhập"/><input name="password" type="password" minLength={8} required placeholder="Mật khẩu tối thiểu 8 ký tự"/><select name="role"><option value="sale">Sale</option><option value="admin">Admin</option></select><select name="branch"><option>Bắc Ninh</option><option>Lạng Sơn</option></select><div className="modal-actions"><button type="button" onClick={onClose}>Hủy</button><button className="primary">Tạo tài khoản</button></div></form></div>;
 }
 
-function Login({ onDemo, demo = false }: { onDemo?: () => void; demo?: boolean }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [msg, setMsg] = useState('');
-  const [sending, setSending] = useState(false);
-
-  async function login(e: React.FormEvent) {
-    e.preventDefault(); if (!supabase) return; setMsg('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setMsg(error.message);
-  }
-
-  async function forgot() {
-    if (!supabase || !email) { setMsg('Nhập email trước rồi bấm Quên mật khẩu.'); return; }
-    setSending(true); setMsg('');
-    const redirectTo = window.location.origin + window.location.pathname;
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-    setSending(false);
-    if (error) setMsg(error.message); else setMsg('Đã gửi yêu cầu. Nếu email hợp lệ, hãy mở email mới nhất để đặt mật khẩu.');
-  }
-
-  return <div className="login"><div className="login-card"><div className="logo big">LH</div><h1>Liên Hoa CRM</h1><p>Đăng nhập hệ thống Sales & CSKH</p>
-    {demo ? <><div className="demo-note">Chưa cấu hình Supabase. Đây là chế độ demo.</div><button className="primary full" onClick={onDemo}>Vào bản demo</button></> : <form onSubmit={login}>
-      <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="Email nhân viên"/>
-      <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="Mật khẩu"/>
-      {msg && <div className="error">{msg}</div>}
-      <button className="primary full">Đăng nhập</button>
-      <button type="button" className="recovery-link" onClick={forgot} disabled={sending}>{sending ? 'Đang gửi...' : 'Quên mật khẩu?'}</button>
-    </form>}
-  </div></div>;
+function StaffPasswordModal({ staff, onClose, onSubmit }: { staff: Profile; onClose: () => void; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
+  return <div className="modal-backdrop"><form className="modal" onSubmit={onSubmit}><div className="modal-head"><div><h2>Đặt lại mật khẩu</h2><p>{staff.full_name} • {staff.email || '—'}</p></div><button type="button" onClick={onClose}><X size={17}/></button></div><input name="password" type="password" minLength={8} required placeholder="Mật khẩu mới (ít nhất 8 ký tự)" autoComplete="new-password"/><input name="confirm" type="password" minLength={8} required placeholder="Nhập lại mật khẩu" autoComplete="new-password"/><div className="modal-actions"><button type="button" onClick={onClose}>Hủy</button><button className="primary">Lưu mật khẩu</button></div></form></div>;
 }
 
 function Card({ icon, label, value, note }: { icon: React.ReactNode; label: string; value: string; note: string }) {
-  return <div className="card"><div className="card-icon">{icon}</div><div className="label">{label}</div><div className="value">{value}</div><div className="note">{note}</div></div>;
+  return <div className="card"><div className="card-icon">{icon}</div><div><small>{label}</small><strong>{value}</strong><span>{note}</span></div></div>;
 }
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
