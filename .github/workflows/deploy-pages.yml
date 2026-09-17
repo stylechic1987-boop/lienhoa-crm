@@ -16,7 +16,9 @@ concurrency:
 
 env:
   VITE_SUPABASE_URL: https://ivbnnubqeafjkqoeovmk.supabase.co
-  VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+  # Supabase publishable keys are designed for browser applications.
+  # Keep this in the build environment so the deployed frontend always uses the active project key.
+  VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable__42rr9VIa5GXDD3Dw8oOu_Q_OzS6DGCp
 
 jobs:
   build:
@@ -36,7 +38,7 @@ jobs:
       - name: Validate Supabase configuration
         run: |
           test -n "$VITE_SUPABASE_PUBLISHABLE_KEY"
-          echo "Supabase publishable key variable is configured."
+          echo "Supabase publishable key configured."
       - name: Build CRM
         working-directory: frontend
         run: npm run build
