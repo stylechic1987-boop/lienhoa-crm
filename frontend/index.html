@@ -8,14 +8,17 @@ const module=params.get('module');
 if(isRecovery){import('./src/recovery.tsx');}
 else if(module==='tuition'){import('./src/tuition.tsx');}
 else if(module==='finance'){import('./src/finance.tsx');}
+else if(module==='messenger'){import('./src/messenger.tsx');}
 else{
   import('./src/crm.tsx');
   const wire=()=>{
     const links=[...document.querySelectorAll('a')];
     const tuition=links.find(a=>(a.textContent||'').includes('Thu học phí'));
     const finance=links.find(a=>(a.textContent||'').includes('KPI & Báo cáo'));
+    const inbox=links.find(a=>(a.textContent||'').includes('Inbox / Leads'));
     if(tuition&&!tuition.dataset.tuitionWired){tuition.dataset.tuitionWired='1';tuition.addEventListener('click',e=>{e.preventDefault();location.href=location.pathname+'?module=tuition';});}
     if(finance&&!finance.dataset.financeWired){finance.dataset.financeWired='1';finance.addEventListener('click',e=>{e.preventDefault();location.href=location.pathname+'?module=finance';});}
+    if(inbox&&!inbox.dataset.messengerWired){inbox.dataset.messengerWired='1';inbox.addEventListener('click',e=>{e.preventDefault();location.href=location.pathname+'?module=messenger';});}
   };
   new MutationObserver(wire).observe(document.getElementById('root'),{childList:true,subtree:true});wire();
 }
