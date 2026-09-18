@@ -13,29 +13,31 @@ type M={month_start:string;revenue:number;fixed_costs:number;variable_costs:numb
 type B={month_start:string;branch?:string;revenue:number;fixed_costs:number;variable_costs:number;variable_cost_ratio:number;break_even_revenue:number;break_even_students:number;avg_ticket:number};
 
 function App(){
- const [session,setSession]=useState<any>(null),[me,setMe]=useState<P|null>(null),[staff,setStaff]=useState<P[]>([]),[ex,setEx]=useState<E[]>([]),[pr,setPr]=useState<PR[]>([]),[ms,setMs]=useState<M[]>([]),[bes,setBes]=useState<B[]>([]);
+ const [session,setSession]=useState<any>(null),[me,setMe]=useState<P|null>(null),[staff,setStaff]=useState<P[]>([]),[ex,setEx]=useState<E[]>([]),[pr,setPr]=useState<PR[]>([]),[ms,setMs]=useState<M[]>([]),[bes,setBes]=useState<B[]>([]),[mb,setMb]=useState<any[]>([]),[beb,setBeb]=useState<any[]>([]);
  const [month,setMonth]=useState(monthNow()),[branch,setBranch]=useState('all'),[page,setPage]=useState('overview'),[err,setErr]=useState(''),[showEx,setShowEx]=useState(false),[showPr,setShowPr]=useState(false),[loading,setLoading]=useState(false);
  useEffect(()=>{if(!supabase)return;supabase.auth.getSession().then(({data})=>setSession(data.session));const z=supabase.auth.onAuthStateChange((_e,x)=>setSession(x));return()=>z.data.subscription.unsubscribe()},[]);
  useEffect(()=>{if(session?.user)load()},[session]);
  async function load(){if(!supabase||!session)return;setLoading(true);setErr('');
-  const [meR,staffR,exR,prR,msR,beR]=await Promise.all([
+  const [meR,staffR,exR,prR,msR,beR,mbR,bebR]=await Promise.all([
    supabase.from('profiles').select('id,full_name,role,branch,active').eq('id',session.user.id).single(),
    supabase.from('profiles').select('id,full_name,role,branch,active').eq('active',true).order('full_name'),
    supabase.from('expenses').select('*').order('expense_date',{ascending:false}),
    supabase.from('payroll_records').select('*').order('payroll_month',{ascending:false}),
    supabase.from('v_finance_monthly').select('*').order('month_start',{ascending:false}),
-   supabase.from('v_break_even_monthly').select('*').order('month_start',{ascending:false})
+   supabase.from('v_break_even_monthly').select('*').order('month_start',{ascending:false}),
+   supabase.from('v_finance_monthly_branch').select('*').order('month_start',{ascending:false}),
+   supabase.from('v_break_even_monthly_branch').select('*').order('month_start',{ascending:false})
   ]);
   if(meR.error){setErr(meR.error.message);setLoading(false);return;}
   if(meR.data?.role==='sale'){setMe(meR.data);setLoading(false);return;}
-  setMe(meR.data);setStaff(staffR.data||[]);setEx(exR.data||[]);setPr(prR.data||[]);setMs(msR.data||[]);setBes(beR.data||[]);
+  setMe(meR.data);setStaff(staffR.data||[]);setEx(exR.data||[]);setPr(prR.data||[]);setMs(msR.data||[]);setBes(beR.data||[]);setMb(mbR.data||[]);setBeb(bebR.data||[]);
   const bad=[staffR,exR,prR,msR,beR].find(x=>x.error);if(bad?.error)setErr(bad.error.message);setLoading(false);
  }
  if(!session)return <Login/>;
  if(me?.role==='sale')return <AccessDenied/>;
  const staffMap=useMemo(()=>Object.fromEntries(staff.map(x=>[x.id,x])),[staff]);
- const cur=branch==='all'?(ms.find(x=>String(x.month_start).slice(0,7)===month)||{revenue:0,fixed_costs:0,variable_costs:0,total_payroll_cost:0,operating_profit:0}):null;
- const be=branch==='all'?(bes.find(x=>String(x.month_start).slice(0,7)===month)||{revenue:0,fixed_costs:0,variable_costs:0,variable_cost_ratio:0,break_even_revenue:0,break_even_students:0,avg_ticket:0}):(bes.find(x=>String(x.month_start).slice(0,7)===month && (x as any).branch===branch)||{revenue:0,fixed_costs:0,variable_costs:0,variable_cost_ratio:0,break_even_revenue:0,break_even_students:0,avg_ticket:0});
+ const cur=branch==='all'?(ms.find(x=>String(x.month_start).slice(0,7)===month)||{revenue:0,fixed_costs:0,variable_costs:0,total_payroll_cost:0,operating_profit:0}):(mb.find(x=>String(x.month_start).slice(0,7)===month&&x.branch===branch)||{revenue:0,fixed_costs:0,variable_costs:0,total_payroll_cost:0,operating_profit:0});
+ const be=branch==='all'?(bes.find(x=>String(x.month_start).slice(0,7)===month)||{revenue:0,fixed_costs:0,variable_costs:0,variable_cost_ratio:0,break_even_revenue:0,break_even_students:0,avg_ticket:0}):(beb.find(x=>String(x.month_start).slice(0,7)===month&&x.branch===branch)||{revenue:0,fixed_costs:0,variable_costs:0,variable_cost_ratio:0,break_even_revenue:0,break_even_students:0,avg_ticket:0});
  const fes=ex.filter(x=>x.expense_date?.slice(0,7)===month&&(branch==='all'||x.branch===branch));
  const fps=pr.filter(x=>x.payroll_month?.slice(0,7)===month&&(branch==='all'||staffMap[x.profile_id]?.branch===branch));
  const branchFinance=branch==='all'?null:undefined;
