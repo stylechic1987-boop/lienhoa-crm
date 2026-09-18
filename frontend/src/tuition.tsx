@@ -27,8 +27,35 @@ const receiptHtml=(p:Payment,enr:Enrollment,allPayments:Payment[])=>{
  '<div class="section">TƯ VẤN & XÁC NHẬN</div><div class="grid"><div class="line">Tư vấn viên: ................................</div><div class="line">Mã tư vấn viên: ................................</div><div class="line">Nhóm / Lớp: '+safe(cls)+'</div><div class="line">Ngày đăng ký: '+safe(new Date(p.paid_at).toLocaleDateString('vi-VN'))+'</div></div>'+
  '<div class="sign"><div><b>Học viên</b><br><br><br>(Ký và ghi rõ họ tên)</div><div><b>Giám đốc Trung tâm</b><br><br><br>(Ký và ghi rõ họ tên)</div></div></div></body></html>';
 };
-const exportReceipt=(p:Payment,enr:Enrollment|undefined,allPayments:Payment[])=>{if(!enr)return;const html=receiptHtml(p,enr,allPayments),blob=new Blob([html],{type:'text/html;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Bo_ho_so_'+p.id.slice(0,8).toUpperCase()+'.html';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url)};
-const printReceipt=(p:Payment,enr:Enrollment|undefined,allPayments:Payment[])=>{if(!enr)return;const w=window.open('','_blank');if(!w){alert('Hãy cho phép cửa sổ in (pop-up) cho CRM.');return}w.document.write(receiptHtml(p,enr,allPayments));w.document.close();w.focus();setTimeout(()=>w.print(),300)};
+const buildReceiptHtml=(p:Payment,enr:Enrollment,allPayments:Payment[])=>{
+ const student=enr.student?.full_name||'—',phone=enr.student?.phone||'—',email=enr.student?.email||'—',cls=enr.class?.name||'—',course=enr.class?.course||'—',branch=enr.class?.branch||enr.student?.branch||'—',no=p.id.slice(0,8).toUpperCase();
+ const totalPaid=allPayments.filter(x=>x.enrollment_id===enr.id).reduce((a,x)=>a+Number(x.amount),0),remain=Math.max(0,Number(enr.final_price)-totalPaid);
+ const safe=(v:any)=>String(v??'—').replace(/[&<>"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x]||x));
+ const row=(l:string,v:any)=>'<div class="row"><b>'+l+'</b><span>'+safe(v)+'</span></div>';
+ return '<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Bộ hồ sơ '+safe(no)+'</title><style>body{font-family:Arial,sans-serif;margin:0;color:#111}.page{max-width:780px;margin:auto;padding:28px 36px;box-sizing:border-box;page-break-after:always}.page:last-child{page-break-after:auto}h1{text-align:center;font-size:19px;margin:0}.sub{text-align:center;margin:5px 0 18px}.title{text-align:center;font-size:21px;font-weight:700;margin:18px 0}.row{display:grid;grid-template-columns:190px 1fr;border-bottom:1px dotted #aaa;padding:8px 0}.section{font-weight:700;border-bottom:1px solid #222;padding:8px 0;margin-top:18px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 22px}.line{padding:7px 0;border-bottom:1px dotted #bbb}.sign{display:grid;grid-template-columns:1fr 1fr;text-align:center;margin-top:48px}.amount{font-size:21px;font-weight:700}@media print{.page{padding:15mm 12mm;min-height:auto}}</style></head><body>'+
+ '<div class="page"><h1>TRUNG TÂM NGOẠI NGỮ LIÊN HOA GLOBAL EDUCATION</h1><div class="sub">KẾT NỐI TRI THỨC – MỞ LỐI TƯƠNG LAI</div><div class="title">PHIẾU THU HỌC PHÍ</div>'+
+ row('Số phiếu',no)+row('Ngày thu',new Date(p.paid_at).toLocaleString('vi-VN'))+row('Học viên',student)+row('Số điện thoại',phone)+row('Lớp',cls)+row('Khóa học',course)+row('Cơ sở',branch)+row('Phương thức',methodLabel[p.method]||p.method)+row('Mã giao dịch',p.reference||'—')+'<div class="row"><b>Số tiền đã thu</b><span class="amount">'+money(p.amount)+'</span></div>'+row('Tổng đã thu',money(totalPaid))+row('Còn phải hoàn thành',money(remain))+row('Ghi chú',p.note||'—')+
+ '<div class="sign"><div><b>Người nộp tiền</b><br><br><br>'+safe(student)+'</div><div><b>Người thu tiền</b><br><br><br>Liên Hoa Global Education</div></div></div>'+
+ '<div class="page"><h1>TRUNG TÂM NGOẠI NGỮ LIÊN HOA GLOBAL EDUCATION</h1><div class="sub">KẾT NỐI TRI THỨC – MỞ LỐI TƯƠNG LAI</div><div class="title">ĐƠN ĐĂNG KÝ NHẬP HỌC</div>'+
+ '<div class="section">I. THÔNG TIN HỌC VIÊN</div><div class="grid"><div class="line"><b>Họ và tên*:</b> '+safe(student)+'</div><div class="line"><b>Ngày sinh*:</b> ................................</div><div class="line"><b>Giới tính:</b> ................................</div><div class="line"><b>Số điện thoại*:</b> '+safe(phone)+'</div><div class="line"><b>Email:</b> '+safe(email)+'</div><div class="line"><b>Địa chỉ:</b> ................................</div></div>'+
+ '<div class="section">II. THÔNG TIN KHÓA HỌC</div><div class="grid"><div class="line"><b>Khóa học đăng ký:</b> '+safe(course)+'</div><div class="line"><b>Lớp:</b> '+safe(cls)+'</div><div class="line"><b>Lịch / ca học đăng ký:</b> ................................</div><div class="line"><b>Ngày dự kiến bắt đầu:</b> '+safe(enr.class?.start_date||'—')+'</div><div class="line"><b>Học viên vào học từ buổi thứ:</b> ................................</div><div class="line"><b>Cơ sở:</b> '+safe(branch)+'</div></div>'+
+ '<div class="section">THÔNG TIN HỌC PHÍ – ĐĂNG KÝ KHÓA HỌC</div><div class="grid"><div class="line">Nguyên giá: '+money(enr.list_price)+'</div><div class="line">Chương trình khuyến mại: '+money(enr.discount_amount)+'</div><div class="line"><b>Tổng học phí thực đóng: '+money(enr.final_price)+'</b></div><div class="line">Số tiền đặt cọc / đã nộp: '+money(totalPaid)+'</div><div class="line">Số tiền bằng chữ: ................................</div><div class="line">Số tiền học phí còn phải hoàn thành: '+money(remain)+'</div></div>'+
+ '<div class="section">DANH MỤC CHƯƠNG TRÌNH ĐÀO TẠO</div><div class="line">• Tiếng Trung giao tiếp cơ bản – nâng cao</div><div class="line">• Tiếng Trung theo định hướng HSK 1–9</div><div class="line">• Tiếng Trung giao tiếp cho người đi làm</div><div class="line">• Tiếng Anh (giao tiếp, TOEIC, IELTS)</div><div class="line">• Tiếng Nhật, Tiếng Hàn và các chương trình ngoại ngữ khác theo kế hoạch đào tạo của Trung tâm.</div>'+
+ '<div class="section">TƯ VẤN & XÁC NHẬN</div><div class="grid"><div class="line">Tư vấn viên: ................................</div><div class="line">Mã tư vấn viên: ................................</div><div class="line">Nhóm / Lớp: '+safe(cls)+'</div><div class="line">Ngày đăng ký: '+safe(new Date(p.paid_at).toLocaleDateString('vi-VN'))+'</div></div>'+
+ '<div class="sign"><div><b>Học viên</b><br><br><br>(Ký và ghi rõ họ tên)</div><div><b>Giám đốc Trung tâm</b><br><br><br>(Ký và ghi rõ họ tên)</div></div></div></body></html>';
+};
+const exportReceipt=(p:Payment,enr:Enrollment|undefined,allPayments:Payment[])=>{
+ if(!enr)return;
+ const html=buildReceiptHtml(p,enr,allPayments),blob=new Blob([html],{type:'text/html;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download='Bo_ho_so_Phu_thu_Don_dang_ky_'+p.id.slice(0,8).toUpperCase()+'.html';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+const printReceipt=(p:Payment,enr:Enrollment|undefined,allPayments:Payment[])=>{
+ if(!enr)return;
+ const html=buildReceiptHtml(p,enr,allPayments),w=window.open('','_blank');
+ if(!w){alert('Trình duyệt đang chặn cửa sổ in. Hãy cho phép pop-up cho trang CRM rồi bấm In lại.');return;}
+ w.document.open();w.document.write(html);w.document.close();w.focus();
+ setTimeout(()=>w.print(),500);
+};
 const statusLabel:Record<string,string>={planned:'Dự kiến',active:'Đang học',completed:'Đã kết thúc',cancelled:'Đã hủy'};
 const monthNow=()=>new Date().toISOString().slice(0,7);
 
