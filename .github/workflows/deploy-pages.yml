@@ -15,10 +15,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VITE_SUPABASE_URL: https://ivbnnubqeafjkqoeovmk.supabase.co
-  # Supabase publishable keys are designed for browser applications.
-  # Keep this in the build environment so the deployed frontend always uses the active project key.
-  VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable__42rr9VIa5GXDD3Dw8oOuQ_OzS6DGCp
+  VITE_APPWRITE_ENDPOINT: https://cloud.appwrite.io/v1
+  VITE_APPWRITE_PROJECT_ID: ${{ secrets.VITE_APPWRITE_PROJECT_ID }}
+  VITE_APPWRITE_DATABASE_ID: ${{ secrets.VITE_APPWRITE_DATABASE_ID }}
+  VITE_APPWRITE_PROFILES_TABLE_ID: ${{ secrets.VITE_APPWRITE_PROFILES_TABLE_ID }}
+  VITE_APPWRITE_LEADS_TABLE_ID: ${{ secrets.VITE_APPWRITE_LEADS_TABLE_ID }}
+  VITE_APPWRITE_FOLLOWUPS_TABLE_ID: ${{ secrets.VITE_APPWRITE_FOLLOWUPS_TABLE_ID }}
+  VITE_APPWRITE_ACTIVITIES_TABLE_ID: ${{ secrets.VITE_APPWRITE_ACTIVITIES_TABLE_ID }}
 
 jobs:
   build:
@@ -35,10 +38,15 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm install
-      - name: Validate Supabase configuration
+      - name: Validate Appwrite configuration
         run: |
-          test -n "$VITE_SUPABASE_PUBLISHABLE_KEY"
-          echo "Supabase publishable key configured."
+          test -n "$VITE_APPWRITE_PROJECT_ID"
+          test -n "$VITE_APPWRITE_DATABASE_ID"
+          test -n "$VITE_APPWRITE_PROFILES_TABLE_ID"
+          test -n "$VITE_APPWRITE_LEADS_TABLE_ID"
+          test -n "$VITE_APPWRITE_FOLLOWUPS_TABLE_ID"
+          test -n "$VITE_APPWRITE_ACTIVITIES_TABLE_ID"
+          echo "Appwrite configuration present."
       - name: Build CRM
         working-directory: frontend
         run: npm run build
