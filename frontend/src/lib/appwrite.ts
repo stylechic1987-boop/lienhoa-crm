@@ -40,7 +40,7 @@ export async function signOut() {
   }
 }
 
-export async function requestRecovery(email: string) {
+export async function createAccount(email: string, password: string, name: string) {\n  return account.create({ userId: ID.unique(), email, password, name });\n}\n\nexport async function requestRecovery(email: string) {
   const url = window.location.origin + window.location.pathname;
   return account.createRecovery({ email, url });
 }
