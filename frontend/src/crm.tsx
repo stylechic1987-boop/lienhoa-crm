@@ -33,10 +33,16 @@ function App(){
   if(!appwriteConfigured||!session?.user)return; setLoading(true);setError('');
   try{
    // Profiles are required for authentication/permissions; leads are optional during initial Appwrite setup.
-   const [pRows,sRows]=await Promise.all([
-    listRows('profiles',[qEqual('user_id',session.user.$id)]),
-    listRows('profiles',[qOrderDesc('$createdAt')])
-   ]);
+   const pRows=await listRows('profiles',[qEqual('user_id',session.user.$id)]);
+   let sRows:any[]=[];
+   let staffReady=true;
+   try{
+    sRows=await listRows('profiles',[qOrderDesc('$createdAt')]);
+   }catch(err:any){
+    // A profile row may be readable while listing all profiles is restricted by Appwrite permissions.
+    // Keep the CRM usable for the signed-in user and only disable staff-wide visibility.
+    staffReady=false;
+   }
    let lRows:any[]=[];
    let leadsReady=true;
    try{
@@ -56,6 +62,8 @@ function App(){
    setLeads(leadRows);setStaff(staffRows);
    if(!leadsReady){
     setError('Appwrite chưa có bảng "leads". CRM đã đăng nhập thành công; hãy tạo bảng leads (và follow_ups, lead_activities) để bật đầy đủ chức năng Lead.');
+   } else if(!staffReady){
+    setError('Tài khoản hiện tại chưa có quyền đọc danh sách nhân sự. Dashboard vẫn hoạt động; hãy cấp quyền Read cho bảng profiles nếu muốn quản trị nhân sự và phân Sale.');
    }
   }catch(err:any){setError(err?.message||'Không tải được dữ liệu Appwrite');}
   finally{setLoading(false);}
