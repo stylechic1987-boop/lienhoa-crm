@@ -6,9 +6,9 @@ export const databaseId = import.meta.env.VITE_APPWRITE_DATABASE_ID || "6aad4a8f
 
 export const tableIds = {
   profiles: import.meta.env.VITE_APPWRITE_PROFILES_TABLE_ID || "6aad4c04002b2fdd8382",
-  leads: import.meta.env.VITE_APPWRITE_LEADS_TABLE_ID || "",
-  followUps: import.meta.env.VITE_APPWRITE_FOLLOWUPS_TABLE_ID || "",
-  activities: import.meta.env.VITE_APPWRITE_ACTIVITIES_TABLE_ID || "",
+  leads: import.meta.env.VITE_APPWRITE_LEADS_TABLE_ID || "leads",
+  followUps: import.meta.env.VITE_APPWRITE_FOLLOWUPS_TABLE_ID || "follow_ups",
+  activities: import.meta.env.VITE_APPWRITE_ACTIVITIES_TABLE_ID || "lead_activities",
 };
 
 export const appwriteConfigured = Boolean(projectId && databaseId);
