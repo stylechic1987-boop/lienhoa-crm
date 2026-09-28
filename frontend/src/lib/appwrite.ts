@@ -1,6 +1,6 @@
 import { Account, Client, ID, Query, TablesDB } from "appwrite";
 
-export const endpoint = import.meta.env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1";
+export const endpoint = import.meta.env.VITE_APPWRITE_ENDPOINT || "https://syd.cloud.appwrite.io/v1";
 export const projectId = import.meta.env.VITE_APPWRITE_PROJECT_ID || "";
 export const databaseId = import.meta.env.VITE_APPWRITE_DATABASE_ID || "6aad4a8f000133bdd644";
 
