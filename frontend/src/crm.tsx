@@ -32,11 +32,20 @@ function App(){
  async function loadData(){
   if(!appwriteConfigured||!session?.user)return; setLoading(true);setError('');
   try{
-   const [pRows,lRows,sRows]=await Promise.all([
+   // Profiles are required for authentication/permissions; leads are optional during initial Appwrite setup.
+   const [pRows,sRows]=await Promise.all([
     listRows('profiles',[qEqual('user_id',session.user.$id)]),
-    listRows('leads',[qOrderDesc('$createdAt')]),
     listRows('profiles',[qOrderDesc('$createdAt')])
    ]);
+   let lRows:any[]=[];
+   let leadsReady=true;
+   try{
+    lRows=await listRows('leads',[qOrderDesc('$createdAt')]);
+   }catch(err:any){
+    leadsReady=false;
+    const msg=String(err?.message||'');
+    if(!/requested id.*leads|table.*leads.*not.*found/i.test(msg)) throw err;
+   }
    const p=pRows[0] as any;
    if(!p){setError('Tài khoản Appwrite chưa có profile. Hãy tạo dòng profiles với user_id = User ID hiện tại.');await appwriteSignOut();setSession(null);return;}
    const me=rowProfile(p); if(!me.active){setError('Tài khoản đã bị vô hiệu hóa.');await appwriteSignOut();setSession(null);return;}
@@ -45,6 +54,9 @@ function App(){
    const leadRows=lRows.map((r:any)=>({id:r.$id,full_name:r.full_name,phone:r.phone||null,email:r.email||null,course:r.course||null,source:r.source||'manual',branch:r.branch||null,status:r.status||'new',assigned_to:r.assigned_to||null,notes:r.notes||null,next_follow_up:r.next_follow_up||null,created_at:r.$createdAt,updated_at:r.$updatedAt,assignee:r.assigned_to?staffById.get(r.assigned_to)||null:null})) as Lead[];
    setProfile({...me,full_name:me.full_name||session.user.name||session.user.email,email:me.email||session.user.email});
    setLeads(leadRows);setStaff(staffRows);
+   if(!leadsReady){
+    setError('Appwrite chưa có bảng "leads". CRM đã đăng nhập thành công; hãy tạo bảng leads (và follow_ups, lead_activities) để bật đầy đủ chức năng Lead.');
+   }
   }catch(err:any){setError(err?.message||'Không tải được dữ liệu Appwrite');}
   finally{setLoading(false);}
  }
