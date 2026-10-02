@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Users, UserRound, Bell, CheckCircle2, LogOut, Plus, Search, UserCog, RefreshCw, ShieldCheck, UserPlus, Power, X, KeyRound, Mail, Loader2, CalendarClock, Phone, MessageSquare, ClipboardList, BarChart3 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import './styles.css';
+import TiengTrungLienHoa from './pages/TiengTrungLienHoa';
 
 type Role = 'director' | 'admin' | 'sale';
 type Profile = { id:string; full_name:string; email:string|null; role:Role; branch:string|null; active:boolean; created_at?:string };
@@ -17,6 +18,7 @@ const activityLabels:Record<string,string>={note:'Ghi chú',call:'Gọi điện'
 function clearStaleRecoveryHash(){if(window.location.hash.includes('error=')||window.location.hash.includes('otp_expired'))window.history.replaceState(null,'',window.location.pathname+window.location.search)}
 
 function App(){
+ if(window.location.pathname.startsWith('/tieng-trung')) return <TiengTrungLienHoa/>;
  const [session,setSession]=useState<any>(null); const [profile,setProfile]=useState<Profile|null>(null); const [leads,setLeads]=useState<Lead[]>([]); const [staff,setStaff]=useState<Profile[]>([]); const [followUps,setFollowUps]=useState<FollowUp[]>([]); const [activities,setActivities]=useState<Activity[]>([]);
  const [page,setPage]=useState<'dashboard'|'leads'|'sales'|'followup'|'staff'>('dashboard'); const [query,setQuery]=useState(''); const [status,setStatus]=useState('all'); const [branch,setBranch]=useState('all'); const [showAdd,setShowAdd]=useState(false); const [showStaffModal,setShowStaffModal]=useState(false); const [resetStaff,setResetStaff]=useState<Profile|null>(null); const [selectedLead,setSelectedLead]=useState<Lead|null>(null); const [showFollowModal,setShowFollowModal]=useState(false); const [loading,setLoading]=useState(true); const [error,setError]=useState('');
  useEffect(()=>{clearStaleRecoveryHash(); if(!supabase){setLoading(false);return;} supabase.auth.getSession().then(({data})=>setSession(data.session)); const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>setSession(s)); return()=>subscription.unsubscribe()},[]);
