@@ -1,52 +1,79 @@
 # Liên Hoa AI Agent — Phase 1: Audit & Safe Foundation
 
-Status: **Discovery in progress**  
+Status: **Code audit complete; live database verification blocked by inactive projects**  
 Target: CRM Lead → Sale → follow-up automation  
 Working branch: `feat/phase-1-foundation-audit`  
 Production changes: **None**. No database migration or data write was performed during this audit.
 
-## 1. Verified repository findings
+## 1. Repository inventory
 
-### `stylechic1987-boop/lienhoa-crm`
-- README describes a CRM workflow: Facebook Page/Inbox → Lead → Sale assignment → follow-up → close → tuition collection → KPI/reporting.
-- README describes React + TypeScript + Vite, Tailwind, Node.js/Express API, PostgreSQL, and Meta Graph API/webhooks.
-- `frontend/package.json` includes React, Vite, TypeScript, Tailwind, and `@supabase/supabase-js`.
-- The following paths could not be found at the expected locations during this pass: `backend/package.json`, `database/schema.sql`, `docs/architecture.md`. This is not proof they do not exist under different names or directories; inventory the full repository tree before changing code.
+### Canonical CRM candidate: `stylechic1987-boop/lienhoa-crm`
+- Frontend: `frontend/src/main.tsx`, `crm.tsx`, `messenger.tsx`, `finance.tsx`, `tuition.tsx`, `pages/TiengTrungLienHoa.tsx`, `lib/supabase.ts`.
+- Supabase SQL: `supabase/schema.sql`, `supabase/public-lead-notifications.sql`.
+- Edge Functions: `supabase/functions/public-lead/index.ts`, `facebook-webhook/index.ts`, `meta-webhook/index.ts`.
+- Deploy: `.github/workflows/deploy-pages.yml`; deploys the Vite frontend to GitHub Pages.
+- No `backend/package.json`, `database/schema.sql`, or `docs/architecture.md` was found at those expected paths. The actual repository tree contains no Express backend despite README wording; the implemented backend integration is primarily Supabase client + Edge Functions.
+- Frontend package uses React, Vite, TypeScript, Tailwind, and `@supabase/supabase-js`.
 
-### `stylechic1987-boop/Li-n-Hoa-Connnect---CRM`
-- README describes a React/Vite HR app with Supabase login and HR tables.
-- Root `package.json` lists `appwrite` but does not list `@supabase/supabase-js`; this conflicts with the README's Supabase description and must be reconciled against actual imports/config before selecting a backend.
-- `supabase/migrations/001_hr_schema.sql` defines HR-specific tables and RLS policies. Do not repurpose HR tables as CRM Lead tables without a separate data-model review.
+### HR/class attendance app: `stylechic1987-boop/Li-n-Hoa-Connnect---CRM`
+- Frontend: `src/App.tsx`, `src/components/Login.tsx`, `src/components/ClassAttendance.tsx`, `src/lib/auth.ts`, `src/lib/backend.ts`.
+- Actual `src/lib/backend.ts` imports Appwrite SDK and reads `VITE_APPWRITE_*` variables. `APPWRITE_SETUP.md` confirms Appwrite is the current runtime backend.
+- `supabase/migrations/001_hr_schema.sql`, `002_class_attendance.sql`, and `003_monthly_attendance_access.sql` are SQL artifacts but do not establish that the deployed app currently uses Supabase.
+- Root `package.json` declares `appwrite`, not `@supabase/supabase-js`. This repository should remain separate from the Lead/Sale CRM until the owner decides to consolidate the apps.
 
-### Supabase project
-- Project reference: `nvjasrrpwhfolnsnwhtr`
-- Project name: `lienhoa-crm`
-- Region: `ap-southeast-1`
-- Current management status returned: `INACTIVE`
-- Read-only attempts to list tables and migrations timed out. Database schema, data availability, Auth users, and migration history remain **unverified**.
-- Do not restore, recreate, migrate, or point production traffic at this project until the owner confirms the intended environment and backup/recovery requirements.
+## 2. Build verification evidence
 
-## 2. Phase 1 work items
+- CRM `lienhoa-crm`: latest visible GitHub Actions build/deploy run on 2026-10-02 completed successfully: [run #36964453279](https://github.com/stylechic1987-boop/lienhoa-crm/actions/runs/36964453279). The feature branches in this audit have not yet had a full build run.
+- HR app: latest visible build on 2026-09-28 failed at `src/components/ClassAttendance.tsx(21,426)`. TypeScript reports a cast missing required `totalSessions` while the object has `total_sessions`. See [failed run #36394920033](https://github.com/stylechic1987-boop/Li-n-Hoa-Connnect---CRM/actions/runs/36394920033).
+- This is a recorded CI baseline, not a local rebuild in this session.
 
-- [x] Inspect CRM README and frontend dependency manifest.
-- [x] Inspect HR repository README, dependency manifest, and HR migration.
-- [x] Check the configured Supabase project status.
-- [x] Attempt read-only table/migration inventory; record timeout.
-- [ ] Inventory the complete CRM repository tree and identify the actual app entry points, API routes, schema, tests, and deployment configuration.
-- [ ] Trace every Supabase/Appwrite/PostgreSQL reference and determine which backend is actually used by each deployable app.
-- [ ] Confirm the intended canonical repository and environment (development/staging/production).
-- [ ] Confirm backup/export and restore strategy before any database activation or migration.
-- [ ] Establish a baseline build/test result and record existing failures.
-- [ ] Review all existing RLS policies and run a role-by-role access matrix before expanding the schema.
+## 3. Supabase environment findings
 
-## 3. Decisions pending verification
+Two distinct project references are in source/configuration:
 
-1. **Canonical app:** likely `lienhoa-crm` for Lead/Sale; the other repository currently documents HR functionality. Confirm whether they should be integrated or remain separate apps.
-2. **Canonical database:** Supabase is the target architecture, but the inspected project is inactive and schema access timed out. Do not assume it contains the latest CRM data.
-3. **API layer:** README mentions Express, but the expected backend manifest was not found. Verify the actual directory tree before adding endpoints.
-4. **Lead data model:** inspect current schema and sample data before creating or renaming tables. Prefer extending equivalent tables rather than duplicating them.
+| Source | Project ref | Management status |
+|---|---|---|
+| CRM deploy workflow `VITE_SUPABASE_URL` | `ivbnnubqeafjkqoeovmk` | `INACTIVE` |
+| CRM `frontend/.env.example` | `nvjasrrpwhfolnsnwhtr` | `INACTIVE` |
 
-## 4. Safety requirements
+- `nvjasrrpwhfolnsnwhtr`: project name `lienhoa-crm`, region `ap-southeast-1`; table and migration listing timed out.
+- `ivbnnubqeafjkqoeovmk`: region `ap-northeast-1`; table and migration listing also timed out.
+- Security advisor calls returned no lint notices, but that does **not** prove the database is healthy or that its tables/policies were inspected.
+- The actual active production project, schema, records, Auth users, backups, and recovery eligibility remain **unverified**. Do not restore, recreate, migrate, or switch production traffic until the intended project and backup path are confirmed.
+
+## 4. Existing CRM schema and security findings
+
+- `supabase/schema.sql` defines `profiles`, `leads`, and `lead_activities`; legacy roles are only `director`, `admin`, and `sale`.
+- Existing Lead SELECT is limited to assigned Sale or global manager; branch-director and center-director scopes are not implemented in the baseline schema.
+- Existing Lead INSERT checks creator identity or manager status but does not enforce branch-matched assignment.
+- Existing Lead UPDATE policy does not provide the required branch-scoped model.
+- `public-lead/index.ts` previously allowed a form submission with no branch (and branch `Online`) to choose from Sale profiles across branches. A draft Phase 2 change now requires exact branch matching and leaves a Lead unassigned when branch is missing.
+- Facebook Edge Function references `facebook_pages`, `facebook_conversations`, and `facebook_messages`, which are not defined in the inspected `supabase/schema.sql`. Verify whether these tables were created elsewhere before enabling the webhook.
+- `public-lead-notifications.sql` defines `lead_notifications` separately; verify that it exists in the target environment before using the form endpoint.
+
+## 5. Phase 1 work-item status
+
+- [x] Inspect complete file trees of both repositories.
+- [x] Identify CRM frontend entry points, SQL artifacts, Edge Functions, and deployment workflow.
+- [x] Confirm HR app runtime backend is Appwrite from source code.
+- [x] Record latest available CI build outcomes.
+- [x] Inspect the baseline Lead schema and RLS policies.
+- [x] Compare configured Supabase project references and record inactive status/timeouts.
+- [ ] Verify live database schema, Auth users, data, migrations, backup and restore path.
+- [ ] Confirm canonical Supabase project and canonical branch labels.
+- [ ] Rebuild feature branches in CI and run the role-by-role RLS test matrix against staging.
+
+## 6. Go/no-go recommendation
+
+**GO for isolated code/migration development in a feature branch. NO-GO for applying migrations to production or activating integrations.**
+
+Phase 2 can be drafted safely in GitHub, but the database migration must remain unapplied until:
+1. The owner confirms the correct Supabase project and access is restored.
+2. A verified backup/export and restore path exist.
+3. The live schema and current policies are compared against the migration.
+4. The migration passes in staging with test users for each role and branch.
+
+## 7. Safety requirements
 
 - No secrets, service-role keys, access tokens, passwords, or personal lead exports in Git.
 - Frontend must use only a publishable/anon key; privileged keys stay server-side.
@@ -56,16 +83,3 @@ Production changes: **None**. No database migration or data write was performed 
 - AI tools must call narrow, permission-checked business functions; never allow arbitrary SQL or unrestricted database access.
 - Any outbound message, reassignment affecting ownership, discount, payment change, or destructive operation must be auditable and use approval rules appropriate to the risk.
 
-## 5. Phase 1 acceptance criteria
-
-Phase 1 is complete only when:
-- A repository map identifies frontend, backend/API, database migrations, tests, and deployment paths.
-- The actual backend and canonical environment are documented with evidence from code/configuration.
-- Existing tables, RLS policies, migrations, and available backup/restore path are inventoried.
-- A baseline build/test run is recorded.
-- No production data was changed during the audit.
-- A go/no-go recommendation is recorded for Phase 2 (CRM Lead and role-based access).
-
-## 6. Next action
-
-Complete the full repository inventory and recover read-only visibility into the intended Supabase environment. After verification, implement Phase 2 in a separate feature branch and test against development/staging data first.
