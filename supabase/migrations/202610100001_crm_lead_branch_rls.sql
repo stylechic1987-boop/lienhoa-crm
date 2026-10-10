@@ -148,6 +148,18 @@ begin
     raise exception 'Sale users cannot change Lead assignment, branch, or center.';
   end if;
 
+  if new.assigned_to is not null
+     and (old.assigned_to is distinct from new.assigned_to or old.branch is distinct from new.branch)
+     and not exists (
+       select 1 from public.profiles p
+       where p.id = new.assigned_to
+         and p.role::text = 'sale'
+         and p.active = true
+         and p.branch = new.branch
+     ) then
+    raise exception 'Assigned Sale must be active and belong to the Lead branch.';
+  end if;
+
   if old.assigned_to is distinct from new.assigned_to
      or old.branch is distinct from new.branch then
     insert into public.lead_assignment_history (
@@ -175,6 +187,15 @@ set search_path = pg_catalog
 as $$
 begin
   if new.assigned_to is not null then
+    if not exists (
+      select 1 from public.profiles p
+      where p.id = new.assigned_to
+        and p.role::text = 'sale'
+        and p.active = true
+        and p.branch = new.branch
+    ) then
+      raise exception 'Assigned Sale must be active and belong to the Lead branch.';
+    end if;
     new.assigned_at := coalesce(new.assigned_at, now());
     new.assigned_by := coalesce(new.assigned_by, new.created_by);
   end if;
