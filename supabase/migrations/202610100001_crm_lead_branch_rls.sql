@@ -131,6 +131,17 @@ security definer
 set search_path = pg_catalog
 as $$
 begin
+  -- Sale users may update Lead content/status, but cannot move a Lead across
+  -- owners, branches, or centers. Reassignment is a manager-only operation.
+  if (select private.crm_role()) = 'sale'
+     and (
+       old.assigned_to is distinct from new.assigned_to
+       or old.branch is distinct from new.branch
+       or old.center is distinct from new.center
+     ) then
+    raise exception 'Sale users cannot change Lead assignment, branch, or center.';
+  end if;
+
   if old.assigned_to is distinct from new.assigned_to
      or old.branch is distinct from new.branch then
     insert into public.lead_assignment_history (
@@ -151,7 +162,7 @@ $$;
 revoke all on function private.crm_log_lead_assignment() from public, anon, authenticated;
 drop trigger if exists crm_log_lead_assignment on public.leads;
 create trigger crm_log_lead_assignment
-before update of assigned_to, branch on public.leads
+before update of assigned_to, branch, center on public.leads
 for each row execute function private.crm_log_lead_assignment();
 
 -- Replace the legacy policies with branch-aware policies.
@@ -309,13 +320,13 @@ with check (
 create policy crm_followups_select_scoped on public.lead_follow_ups
 for select to authenticated
 using (
-  assigned_to = (select auth.uid())
-  or created_by = (select auth.uid())
-  or exists (
+  exists (
     select 1 from public.leads l
     where l.id = lead_id
       and (
-        (select private.crm_role()) in ('company_director','director','admin')
+        l.assigned_to = (select auth.uid())
+        or l.created_by = (select auth.uid())
+        or (select private.crm_role()) in ('company_director','director','admin')
         or ((select private.crm_role()) in ('branch_director','mkt')
             and l.branch is not null and l.branch = (select private.crm_branch()))
         or ((select private.crm_role()) = 'center_director'
@@ -350,12 +361,12 @@ with check (
 create policy crm_followups_update_scoped on public.lead_follow_ups
 for update to authenticated
 using (
-  assigned_to = (select auth.uid())
-  or exists (
+  exists (
     select 1 from public.leads l
     where l.id = lead_id
       and (
-        (select private.crm_role()) in ('company_director','director','admin')
+        l.assigned_to = (select auth.uid())
+        or (select private.crm_role()) in ('company_director','director','admin')
         or ((select private.crm_role()) = 'branch_director'
             and l.branch is not null and l.branch = (select private.crm_branch()))
         or ((select private.crm_role()) = 'center_director'
@@ -364,17 +375,22 @@ using (
   )
 )
 with check (
-  assigned_to = (select auth.uid())
-  or exists (
+  exists (
     select 1 from public.leads l
     where l.id = lead_id
       and (
-        (select private.crm_role()) in ('company_director','director','admin')
+        l.assigned_to = (select auth.uid())
+        or (select private.crm_role()) in ('company_director','director','admin')
         or ((select private.crm_role()) = 'branch_director'
             and l.branch is not null and l.branch = (select private.crm_branch()))
         or ((select private.crm_role()) = 'center_director'
             and l.center is not null and l.center = (select private.crm_center()))
       )
+  )
+  and (
+    assigned_to is null
+    or assigned_to = (select auth.uid())
+    or (select private.crm_role()) in ('company_director','director','admin','branch_director','center_director')
   )
 );
 
