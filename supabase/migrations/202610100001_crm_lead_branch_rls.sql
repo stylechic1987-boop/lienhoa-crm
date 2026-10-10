@@ -165,12 +165,32 @@ end;
 $$;
 revoke all on function private.crm_log_lead_assignment() from public, anon, authenticated;
 
+create or replace function private.crm_prepare_new_lead_assignment()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $$
+begin
+  if new.assigned_to is not null then
+    new.assigned_at := coalesce(new.assigned_at, now());
+    new.assigned_by := coalesce(new.assigned_by, new.created_by);
+  end if;
+  return new;
+end;
+$$;
+revoke all on function private.crm_prepare_new_lead_assignment() from public, anon, authenticated;
+drop trigger if exists crm_prepare_new_lead_assignment on public.leads;
+create trigger crm_prepare_new_lead_assignment
+before insert on public.leads
+for each row execute function private.crm_prepare_new_lead_assignment();
+
 create or replace function private.crm_log_new_lead_assignment()
 returns trigger
 language plpgsql
 security definer
 set search_path = pg_catalog
-as $
+as $$
 begin
   if new.assigned_to is not null then
     insert into public.lead_assignment_history (
@@ -179,16 +199,14 @@ begin
     ) values (
       new.id, null, new.assigned_to, null, new.branch, new.created_by
     );
-    new.assigned_at := coalesce(new.assigned_at, now());
-    new.assigned_by := coalesce(new.assigned_by, new.created_by);
   end if;
   return new;
 end;
-$;
+$$;
 revoke all on function private.crm_log_new_lead_assignment() from public, anon, authenticated;
 drop trigger if exists crm_log_new_lead_assignment on public.leads;
 create trigger crm_log_new_lead_assignment
-before insert on public.leads
+after insert on public.leads
 for each row execute function private.crm_log_new_lead_assignment();
 
 drop trigger if exists crm_log_lead_assignment on public.leads;
