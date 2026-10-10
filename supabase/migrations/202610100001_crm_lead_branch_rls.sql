@@ -159,6 +159,25 @@ drop policy if exists "leads read assigned or managers" on public.leads;
 drop policy if exists "authenticated create leads" on public.leads;
 drop policy if exists "sale updates assigned leads" on public.leads;
 drop policy if exists "managers delete leads" on public.leads;
+drop policy if exists crm_leads_select_scoped on public.leads;
+drop policy if exists crm_leads_insert_scoped on public.leads;
+drop policy if exists crm_leads_update_management_scope on public.leads;
+drop policy if exists crm_leads_update_own_sale_scope on public.leads;
+drop policy if exists crm_leads_delete_director_only on public.leads;
+drop policy if exists crm_activities_select_scoped on public.lead_activities;
+drop policy if exists crm_activities_insert_scoped on public.lead_activities;
+drop policy if exists crm_followups_select_scoped on public.lead_follow_ups;
+drop policy if exists crm_followups_insert_scoped on public.lead_follow_ups;
+drop policy if exists crm_followups_update_scoped on public.lead_follow_ups;
+drop policy if exists crm_assignment_history_select_scoped on public.lead_assignment_history;
+drop policy if exists crm_profiles_select_branch_scope on public.profiles;
+
+create policy crm_profiles_select_branch_scope on public.profiles
+for select to authenticated
+using (
+  (select private.crm_role()) = 'branch_director'
+  and branch is not null and branch = (select private.crm_branch())
+);
 
 create policy crm_leads_select_scoped on public.leads
 for select to authenticated
@@ -320,6 +339,11 @@ with check (
         or ((select private.crm_role()) = 'center_director'
             and l.center is not null and l.center = (select private.crm_center()))
       )
+  )
+  and (
+    assigned_to is null
+    or assigned_to = (select auth.uid())
+    or (select private.crm_role()) in ('company_director','director','admin','branch_director','center_director')
   )
 );
 
