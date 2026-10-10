@@ -43,10 +43,11 @@ stable
 security definer
 set search_path = pg_catalog
 as $$
-  select coalesce(
-    (select a.role from private.crm_user_access a where a.user_id = (select auth.uid()) and a.active),
-    (select p.role::text from public.profiles p where p.id = (select auth.uid()))
-  );
+  select case
+    when exists (select 1 from private.crm_user_access a where a.user_id = (select auth.uid()))
+      then (select a.role from private.crm_user_access a where a.user_id = (select auth.uid()) and a.active)
+    else (select p.role::text from public.profiles p where p.id = (select auth.uid()))
+  end;
 $$;
 
 create or replace function private.crm_branch()
@@ -56,10 +57,11 @@ stable
 security definer
 set search_path = pg_catalog
 as $$
-  select coalesce(
-    (select a.branch from private.crm_user_access a where a.user_id = (select auth.uid()) and a.active),
-    (select p.branch from public.profiles p where p.id = (select auth.uid()))
-  );
+  select case
+    when exists (select 1 from private.crm_user_access a where a.user_id = (select auth.uid()))
+      then (select a.branch from private.crm_user_access a where a.user_id = (select auth.uid()) and a.active)
+    else (select p.branch from public.profiles p where p.id = (select auth.uid()))
+  end;
 $$;
 
 create or replace function private.crm_center()
@@ -231,12 +233,20 @@ drop policy if exists crm_followups_insert_scoped on public.lead_follow_ups;
 drop policy if exists crm_followups_update_scoped on public.lead_follow_ups;
 drop policy if exists crm_assignment_history_select_scoped on public.lead_assignment_history;
 drop policy if exists crm_profiles_select_branch_scope on public.profiles;
+drop policy if exists crm_profiles_select_management_scope on public.profiles;
 
-create policy crm_profiles_select_branch_scope on public.profiles
+create policy crm_profiles_select_management_scope on public.profiles
 for select to authenticated
 using (
-  (select private.crm_role()) = 'branch_director'
-  and branch is not null and branch = (select private.crm_branch())
+  (select private.crm_role()) in ('company_director','director','admin')
+  or (
+    (select private.crm_role()) = 'branch_director'
+    and branch is not null and branch = (select private.crm_branch())
+  )
+  or (
+    (select private.crm_role()) = 'center_director'
+    and center is not null and center = (select private.crm_center())
+  )
 );
 
 create policy crm_leads_select_scoped on public.leads
