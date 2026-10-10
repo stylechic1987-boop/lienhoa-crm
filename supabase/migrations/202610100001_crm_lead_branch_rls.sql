@@ -79,6 +79,10 @@ grant execute on function private.crm_role() to authenticated;
 grant execute on function private.crm_branch() to authenticated;
 grant execute on function private.crm_center() to authenticated;
 
+alter table public.profiles enable row level security;
+alter table public.leads enable row level security;
+alter table public.lead_activities enable row level security;
+
 alter table public.leads add column if not exists center text;
 alter table public.leads add column if not exists assigned_at timestamptz;
 alter table public.leads add column if not exists assigned_by uuid references auth.users(id) on delete set null;
@@ -160,6 +164,33 @@ begin
 end;
 $$;
 revoke all on function private.crm_log_lead_assignment() from public, anon, authenticated;
+
+create or replace function private.crm_log_new_lead_assignment()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $
+begin
+  if new.assigned_to is not null then
+    insert into public.lead_assignment_history (
+      lead_id, previous_assignee, new_assignee,
+      previous_branch, new_branch, actor_id
+    ) values (
+      new.id, null, new.assigned_to, null, new.branch, new.created_by
+    );
+    new.assigned_at := coalesce(new.assigned_at, now());
+    new.assigned_by := coalesce(new.assigned_by, new.created_by);
+  end if;
+  return new;
+end;
+$;
+revoke all on function private.crm_log_new_lead_assignment() from public, anon, authenticated;
+drop trigger if exists crm_log_new_lead_assignment on public.leads;
+create trigger crm_log_new_lead_assignment
+before insert on public.leads
+for each row execute function private.crm_log_new_lead_assignment();
+
 drop trigger if exists crm_log_lead_assignment on public.leads;
 create trigger crm_log_lead_assignment
 before update of assigned_to, branch, center on public.leads
