@@ -18,7 +18,7 @@ Branch: `feat/phase-2-leads-branch-rls`
 - `frontend/.env.example` points to project `nvjasrrpwhfolnsnwhtr`.
 - Both project references returned `INACTIVE` from Supabase management.
 - Database table and migration listing timed out for `nvjasrrpwhfolnsnwhtr`; the actual schema and data in either project remain unverified.
-- The latest successful CRM GitHub Actions run is from 2026-10-02. This migration branch has not had a database execution or full application build yet.
+- The main-branch CRM build succeeded on 2026-10-02. The Phase 2 PR frontend build also passed in GitHub Actions run [#38016681073](https://github.com/stylechic1987-boop/lienhoa-crm/actions/runs/38016681073). This validates the frontend build only; it does not execute or validate the SQL migration against PostgreSQL.
 - Do not merge/deploy the migration to production until the intended project, backup, baseline schema, and existing policies are confirmed.
 
 ## Role provisioning
@@ -80,7 +80,7 @@ Lead activities follow parent Lead visibility. Follow-ups are scoped through the
 
 ## Known remaining work
 
-- Full application build and UI test against a reproducible environment.
+- End-to-end UI test against a reproducible environment; frontend build passed in PR CI.
 - Align the deployed workflow URL, `.env.example`, and actual active Supabase project.
 - Confirm/install any missing Facebook tables referenced by the webhook (`facebook_pages`, `facebook_conversations`, `facebook_messages`) before enabling the integration.
 - Add a protected role-provisioning/admin endpoint and a controlled Lead reassignment API.
